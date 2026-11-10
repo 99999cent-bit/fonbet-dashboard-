@@ -4,7 +4,6 @@ const axios = require('axios');
 const path = require('path');
 
 const app = express();
-// Railway сам подставит нужный порт через переменные окружения
 const PORT = process.env.PORT || 3000; 
 
 app.use(cors());
@@ -12,7 +11,12 @@ app.use(express.static(path.join(__dirname)));
 
 let cachedData = null;
 
-// Стабильный адрес линии Фонбета для облачного сервера
+// Корневой маршрут, чтобы Railway видел, что приложение живое
+app.get('/', (req, res) => {
+    res.send('Fonbet Parser Backend is running successfully!');
+});
+
+// Стабильный адрес линии Фонбета
 const url = 'https://line.fon.bet/live/currentLine/ru';
 
 async function fetchFonbetData() {
@@ -39,11 +43,10 @@ async function fetchFonbetData() {
     }
 }
 
-// Запускаем первый опрос и ставим таймер на обновление каждые 15 секунд
 fetchFonbetData();
 setInterval(fetchFonbetData, 15000);
 
-// Эндпоинт, который отдает данные твоему дашборду
+// Эндпоинт для вашего дашборда
 app.get('/api/live-odds', (req, res) => {
     res.json(cachedData || { error: 'Идет загрузка линии с сервера...' });
 });
