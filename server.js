@@ -12,7 +12,7 @@ app.use(express.static(path.join(__dirname)));
 
 let cachedData = null;
 
-// Используем основной адрес линии Фонбета, который стабильно работает в облаке
+// Стабильный адрес линии Фонбета для облачного сервера
 const url = 'https://line.fon.bet/live/currentLine/ru';
 
 async function fetchFonbetData() {
@@ -32,18 +32,18 @@ async function fetchFonbetData() {
             cachedData = response.data;
             console.log(`[${new Date().toLocaleTimeString()}] УСПЕХ! Данные получены. Событий: ${cachedData.events.length}`);
         } else {
-            console.log(`[${new Date().toLocaleTimeString()}] Сервер ответил, но структура данных изменилась.`);
+            console.log(`[${new Date().toLocaleTimeString()}] Сервер ответил, но структура данных пуста.`);
         }
     } catch (error) {
         console.log(`[ОШИБКА] ${error.message}`);
     }
 }
 
-// Запускаем первый опрос и ставим таймер на каждые 15 секунд
+// Запускаем первый опрос и ставим таймер на обновление каждые 15 секунд
 fetchFonbetData();
 setInterval(fetchFonbetData, 15000);
 
-// Эндпоинт для твоего HTML-дашборда
+// Эндпоинт, который отдает данные твоему дашборду
 app.get('/api/live-odds', (req, res) => {
     res.json(cachedData || { error: 'Идет загрузка линии с сервера...' });
 });
