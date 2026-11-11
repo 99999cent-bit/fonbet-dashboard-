@@ -66,7 +66,8 @@ async function getDynamicLineHosts() {
         try {
             const res = await axios.get(configUrl, { headers: HEADERS, timeout: 5000 });
             if (res.data && Array.isArray(res.data.line) && res.data.line.length > 0) {
-                console.log(`[КОНФИГ] Получены актуальные зеркала с ${configUrl}`); return res.data.line.map(h => h.startsWith('http') ? h : `https:${h}`);
+                console.log(`[КОНФИГ] Получены актуальные зеркала с ${configUrl}`);
+                return res.data.line.map(h => h.startsWith('http') ? h : `https:${h}`);
             }
         } catch (e) {
             // Пробуем следующий конфиг
@@ -86,7 +87,22 @@ async function fetchFonbetData() {
 
     for (const host of hosts) {
         for (const endpoint of paths) {
-            const fullUrl = `${host.replace(/\/$/, '')}${endpoint}`; try { const response = await axios.get(fullUrl, { headers: HEADERS, timeout: 7000 });  if (response.data && Array.isArray(response.data.events)) { cachedData = response.data; lastError = null; console.log(`[УСПЕХ] Линия загружена с ${fullUrl}! Событий: ${cachedData.events.length}`); return; } } catch (error) { lastError = `${fullUrl} -> ${error.message}`; console.log(`[ПОПЫТКА] ${lastError}`);
+            const fullUrl = `${host.replace(/\/$/, '')}${endpoint}`;
+            try {
+                const response = await axios.get(fullUrl, {
+                    headers: HEADERS,
+                    timeout: 7000
+                });
+
+                if (response.data && Array.isArray(response.data.events)) {
+                    cachedData = response.data;
+                    lastError = null;
+                    console.log(`[УСПЕХ] Линия загружена с ${fullUrl}! Событий: ${cachedData.events.length}`);
+                    return;
+                }
+            } catch (error) {
+                lastError = `${fullUrl} -> ${error.message}`;
+                console.log(`[ПОПЫТКА] ${lastError}`);
             }
         }
     }
@@ -104,4 +120,10 @@ app.get('/api/live-odds', (req, res) => {
     if (cachedData) {
         res.json(cachedData);
     } else {
-        res.json({ error: `Загрузка линии...
+        res.json({ error: `Загрузка линии... (${lastError})` });
+    }
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Парсер Фонбета v3.0 запущен на порту ${PORT}`);
+});
