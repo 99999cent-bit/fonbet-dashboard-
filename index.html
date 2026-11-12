@@ -76,6 +76,13 @@ body{background:var(--bg);color:var(--text);padding:12px;max-width:900px;margin:
 .status-msg{color:var(--muted);font-size:13px;text-align:center;padding:20px}
 details.diag{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:14px;font-size:12px;color:var(--muted)}
 details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:#cfd8dc;font-size:11.5px}
+.sport-head{display:flex;justify-content:space-between;align-items:center;background:#1e242d;border:1px solid var(--border);border-radius:8px;padding:11px 12px;margin-top:8px;cursor:pointer;font-weight:700;font-size:14px}
+.sport-head .cnt{color:var(--muted);font-weight:600;font-size:12px}
+.league-head{display:flex;justify-content:space-between;cursor:pointer}
+.top-sec{font-size:13px;font-weight:800;margin:14px 0 6px;color:var(--accent)}
+.lg-tag{font-size:10.5px;color:var(--muted);margin-bottom:6px}
+.tab-btn.top.active{color:#ffb300}
+.status-tabs{overflow-x:auto}.tab-btn{white-space:nowrap;padding:8px 10px}
 </style>
 </head>
 <body>
@@ -122,17 +129,10 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
 <div class="feed" id="feed" style="display:none"></div>
 
 <div class="status-tabs">
-  <button class="tab-btn live active" data-tab="live">🔴 Лайв</button>
+  <button class="tab-btn top active" data-tab="top">🔥 Топ</button>
+  <button class="tab-btn live" data-tab="live">🔴 Лайв</button>
   <button class="tab-btn upcoming" data-tab="upcoming">📅 Будущие</button>
   <button class="tab-btn finished" data-tab="finished">🏁 Закрытые</button>
-</div>
-
-<div class="filters" id="filters">
-  <button class="filter-btn active" data-sport="all">Все</button>
-  <button class="filter-btn" data-sport="футбол">⚽ Футбол</button>
-  <button class="filter-btn" data-sport="хоккей">🏒 Хоккей</button>
-  <button class="filter-btn" data-sport="теннис">🎾 Теннис</button>
-  <button class="filter-btn" data-sport="киберспорт">🎮 Киберспорт</button>
 </div>
 
 <input type="text" class="search-box" id="searchInput" placeholder="🔍 Поиск матча...">
@@ -147,7 +147,9 @@ let prevState = {}, matchLog = {};
 const finishedStore = new Map();
 let feedItems = [];
 const expanded = new Set();
-let currentSport = 'all', currentStatusTab = 'live', visibleLimit = 60;
+let currentSport = 'all', currentStatusTab = 'top', visibleLimit = 60;
+const openSports = new Set(), closedLeagues = new Set(), sportLimit = {};
+let sportsTouched = false, lastAutoOpen = null;
 let paused = false, loading = false, nextAt = 0, pollTimer = null, lastOkAt = 0, lastErr = '';
 
 const $ = id => document.getElementById(id);
@@ -273,9 +275,11 @@ function buildMatches(data){
   data.events.forEach(ev => {
     if (!(ev.level === 1 && (ev.team1 || ev.team2))) return;
     const sportObj = sportsMap[ev.sportId] || {};
-    const parentSport = sportObj.parentId ? (sportsMap[sportObj.parentId] || {}) : sportObj;
+    let rootObj = sportObj, guard = 0;
+    while (rootObj.parentId && sportsMap[rootObj.parentId] && guard++ < 6) rootObj = sportsMap[rootObj.parentId];
     const league = sportObj.name || 'Лига';
-    const sportName = parentSport.name || league;
+    const grp = sportGroup(rootObj.name || '', league);
+    const sportName = grp.name;
 
     const rawMisc = miscMap[ev.id];
     const misc = rawMisc ? Object.assign({ __has: true }, rawMisc) : {};
@@ -295,7 +299,7 @@ function buildMatches(data){
 
     fresh.push({
       id: ev.id, team1: ev.team1 || 'Команда 1', team2: ev.team2 || 'Команда 2',
-      league, sport: sportName, sportCategory: sportName.toLowerCase(),
+      league, sport: sportName, sportKey: grp.key, sportIcon: grp.icon, sportCategory: sportName.toLowerCase(), tier: leagueTier(league),
       status, start, place: ev.place || '',
       score: `${s1} : ${s2}`, comment: misc.comment || '',
       timerSeconds: misc.timerSeconds ?? null, timerDir: misc.timerDirection ?? 1, timerAt: fetchedAt,
@@ -303,6 +307,42 @@ function buildMatches(data){
     });
   });
   return fresh;
+}
+
+/* ================= Виды спорта и «Топ» ================= */
+const SPORTS = [
+  ['football','Футбол','⚽',/футбол|football|soccer/],
+  ['hockey','Хоккей','🏒',/хоккей|hockey/],
+  ['tennis','Теннис','🎾',/^(?!.*настольн).*теннис|tennis/],
+  ['basket','Баскетбол','🏀',/баскетбол|basket/],
+  ['esports','Киберспорт','🎮',/киберспорт|cs2|cs:go|dota|valorant|league of legends|esport/],
+  ['tt','Настольный теннис','🏓',/настольн/],
+  ['volley','Волейбол','🏐',/волейбол/],
+  ['mma','Единоборства','🥊',/бокс|mma|ufc|единоборств/],
+  ['baseball','Бейсбол','⚾',/бейсбол/],
+  ['handball','Гандбол','🤾',/гандбол/],
+  ['rugby','Регби','🏉',/регби/]
+];
+function sportGroup(root, league){
+  const r = root.toLowerCase(), l = league.toLowerCase();
+  for (const s of SPORTS) if (s[3].test(r)) return { key:s[0], name:s[1], icon:s[2] };
+  for (const s of SPORTS) if (s[3].test(l)) return { key:s[0], name:s[1], icon:s[2] };
+  const nm = (root && root !== league) ? root : 'Другое';
+  return { key:'x:' + nm.toLowerCase(), name:nm, icon:'🏅' };
+}
+/* Топ-турниры (правьте списки под себя). tier: 2 — главные, 1 — крупные, 0 — обычные, -1 — виртуальные */
+const T1 = /лига чемпионов|лига европы|лига конференций|лига наций|чемпионат мира|чемпионат европы|кубок мира|премьер-лига англии|англия.*премьер|ла лига|испания.*примера|серия а|бундеслига|лига 1|кхл|нхл|нба|nba|евролига|atp|wta|уимблдон|ролан гаррос|australian open|us open|ufc|мейджор|major|iem|blast|esl pro/;
+const T2 = /сборн|товарищеск|премьер-лига|рпл|эредивизи|примейра|чемпионшип/;
+function leagueTier(l){
+  const s = String(l).toLowerCase();
+  if (/виртуал|virtual|симуляц/.test(s)) return -1;
+  if (T1.test(s)) return 2;
+  if (T2.test(s)) return 1;
+  return 0;
+}
+function topScore(m){
+  const soon = m.status === 'upcoming' && m.start && (m.start * 1000 - Date.now()) < 3 * 3600e3 ? 15 : 0;
+  return m.tier * 100 + Math.min(20, Object.keys(m.odds).length + m.subs.length * 2) + (m.status === 'live' ? 30 : 0) + soon;
 }
 
 /* ================= Загрузка и обнаружение изменений ================= */
@@ -422,6 +462,45 @@ function passFilters(m, q){
   return okSport && okSearch;
 }
 
+function cardHtml(m, showLeague){
+  const entries = Object.entries(m.odds);
+  const oddsHtml = entries.length
+    ? `<div class="odds-grid">` + entries.map(([k, v]) => `<div class="odd-btn ${m.oddsDir[k] || ''}"><span class="odd-label">${esc(k)}</span><span class="odd-val">${esc(v)}</span></div>`).join('') + `</div>`
+    : `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Коэффициенты закрыты</div>`;
+  const badge = m.status === 'live'
+    ? `<span class="status-badge status-live"><span class="live-dot"></span><span class="live-timer" data-id="${esc(m.id)}">${esc(fmtTimer(m, false))}</span></span>`
+    : m.status === 'upcoming' ? `<span class="status-badge status-upcoming">📅 ${esc(fmtStart(m))}</span>`
+    : `<span class="status-badge status-finished">🏁 Завершён</span>`;
+  const open = expanded.has(String(m.id)) ? 'open' : '';
+  return `
+    <div class="match-card" data-id="${esc(m.id)}">
+      <div class="match-head">
+        ${showLeague ? `<div class="lg-tag">${m.sportIcon} ${esc(m.league)}</div>` : ''}
+        <div class="match-top">${badge}<span>ID: ${esc(m.id)} ▾</span></div>
+        <div class="teams-row">
+          <div class="teams-names"><div>${esc(m.team1)}</div><div>${esc(m.team2)}</div></div>
+          <div class="score-box ${m.scoreChanged ? 'changed' : ''}"><div class="score-main">${esc(m.score)}</div><div class="score-sub">${esc(m.comment)}</div></div>
+        </div>
+        ${oddsHtml}
+      </div>
+      <div class="details ${open}" id="d${esc(m.id)}">${renderDetails(m)}</div>
+    </div>`;
+}
+
+function renderTop(base){
+  const mk = m => Object.keys(m.odds).length;
+  const ok = m => m.tier >= 0 && mk(m) > 0 && (m.tier >= 1 || mk(m) >= 10);
+  const live = base.filter(m => m.status === 'live' && ok(m)).sort((a, b) => topScore(b) - topScore(a)).slice(0, 20);
+  const nowS = Date.now() / 1000;
+  const soon = base.filter(m => m.status === 'upcoming' && ok(m) && (!m.start || m.start - nowS < 86400))
+    .sort((a, b) => topScore(b) - topScore(a)).slice(0, 20).sort((a, b) => (a.start || 9e12) - (b.start || 9e12));
+  if (!live.length && !soon.length) return `<div class="status-msg">Топ-матчей сейчас нет. Загляните во вкладки «Лайв» и «Будущие».</div>`;
+  let h = '';
+  if (live.length) h += `<div class="top-sec">🔴 Топ — сейчас играют (${live.length})</div>` + live.map(m => cardHtml(m, true)).join('');
+  if (soon.length) h += `<div class="top-sec">📅 Топ — ближайшие 24 часа (${soon.length})</div>` + soon.map(m => cardHtml(m, true)).join('');
+  return h;
+}
+
 function renderMatches(){
   const container = $('matchesContainer');
   const q = $('searchInput').value.trim().toLowerCase();
@@ -432,48 +511,49 @@ function renderMatches(){
   document.querySelector('.tab-btn.upcoming').textContent = `📅 Будущие (${counts.upcoming})`;
   document.querySelector('.tab-btn.finished').textContent = `🏁 Закрытые (${counts.finished})`;
 
+  if (currentStatusTab === 'top'){ container.innerHTML = renderTop(base); return; }
+
   let list = base.filter(m => m.status === currentStatusTab);
   if (currentStatusTab === 'upcoming') list = list.slice().sort((a, b) => (a.start || 9e12) - (b.start || 9e12));
   if (currentStatusTab === 'finished') list = list.slice().sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
-
   if (!list.length){
     container.innerHTML = `<div class="status-msg">${currentStatusTab === 'finished' ? 'Закрытых матчей пока нет. Здесь появятся матчи, которые закончились, пока страница была открыта.' : 'Матчей не найдено.'}</div>`;
     return;
   }
 
-  let html = `<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Найдено: <b>${list.length}</b></div><div class="hint">Нажмите на матч, чтобы раскрыть подробности</div>`;
-  let lastLeague = null;
-
-  list.slice(0, visibleLimit).forEach(m => {
-    if (m.league !== lastLeague){ html += `<div class="league-header">${esc(m.league)}</div>`; lastLeague = m.league; }
-
-    const entries = Object.entries(m.odds);
-    const oddsHtml = entries.length
-      ? `<div class="odds-grid">` + entries.map(([k, v]) => `<div class="odd-btn ${m.oddsDir[k] || ''}"><span class="odd-label">${esc(k)}</span><span class="odd-val">${esc(v)}</span></div>`).join('') + `</div>`
-      : `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Коэффициенты закрыты</div>`;
-
-    const badge = m.status === 'live'
-      ? `<span class="status-badge status-live"><span class="live-dot"></span><span class="live-timer" data-id="${esc(m.id)}">${esc(fmtTimer(m, false))}</span></span>`
-      : m.status === 'upcoming'
-        ? `<span class="status-badge status-upcoming">📅 ${esc(fmtStart(m))}</span>`
-        : `<span class="status-badge status-finished">🏁 Завершён</span>`;
-
-    const open = expanded.has(String(m.id)) ? 'open' : '';
-    html += `
-      <div class="match-card" data-id="${esc(m.id)}">
-        <div class="match-head">
-          <div class="match-top">${badge}<span>ID: ${esc(m.id)} ▾</span></div>
-          <div class="teams-row">
-            <div class="teams-names"><div>${esc(m.team1)}</div><div>${esc(m.team2)}</div></div>
-            <div class="score-box ${m.scoreChanged ? 'changed' : ''}"><div class="score-main">${esc(m.score)}</div><div class="score-sub">${esc(m.comment)}</div></div>
-          </div>
-          ${oddsHtml}
-        </div>
-        <div class="details ${open}" id="d${esc(m.id)}">${renderDetails(m)}</div>
-      </div>`;
+  const sports = new Map();
+  list.forEach(m => {
+    let sp = sports.get(m.sportKey);
+    if (!sp){ sp = { key:m.sportKey, name:m.sport, icon:m.sportIcon, leagues:new Map(), count:0 }; sports.set(m.sportKey, sp); }
+    sp.count++;
+    let lg = sp.leagues.get(m.league);
+    if (!lg){ lg = { name:m.league, tier:m.tier, items:[] }; sp.leagues.set(m.league, lg); }
+    lg.items.push(m);
   });
+  const order = SPORTS.map(x => x[0]);
+  const arr = [...sports.values()].sort((a, b) => {
+    const ia = order.indexOf(a.key), ib = order.indexOf(b.key);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || b.count - a.count;
+  });
+  lastAutoOpen = arr[0].key;
 
-  if (list.length > visibleLimit) html += `<button class="btn-more" data-act="more">Показать ещё (${list.length - visibleLimit})</button>`;
+  let html = `<div class="hint">Нажмите на вид спорта, чтобы открыть список. Нажмите на матч — подробности.</div>`;
+  arr.forEach(sp => {
+    const isOpen = q ? true : (sportsTouched ? openSports.has(sp.key) : sp.key === lastAutoOpen);
+    html += `<div class="sport-head" data-sport="${esc(sp.key)}"><span>${sp.icon} ${esc(sp.name)}</span><span class="cnt">${sp.count} ${isOpen ? '▾' : '▸'}</span></div>`;
+    if (!isOpen) return;
+    const lim = sportLimit[sp.key] || 40;
+    let shown = 0, more = false;
+    const leagues = [...sp.leagues.values()].sort((a, b) => b.tier - a.tier);
+    for (const lg of leagues){
+      if (shown >= lim){ more = true; break; }
+      const lgKey = sp.key + '|' + lg.name, closed = closedLeagues.has(lgKey);
+      html += `<div class="league-header league-head" data-lg="${esc(lgKey)}"><span>${lg.tier >= 2 ? '⭐ ' : ''}${esc(lg.name)}</span><span>${lg.items.length} ${closed ? '▸' : '▾'}</span></div>`;
+      if (closed) continue;
+      for (const m of lg.items){ if (shown >= lim){ more = true; break; } html += cardHtml(m, false); shown++; }
+    }
+    if (more) html += `<button class="btn-more" data-act="more" data-sport="${esc(sp.key)}">Показать ещё в «${esc(sp.name)}»</button>`;
+  });
   container.innerHTML = html;
 }
 
@@ -516,11 +596,24 @@ function renderDetails(m){
 function onContainerClick(e){
   const act = e.target.closest('[data-act]');
   if (act){
-    if (act.dataset.act === 'more'){ visibleLimit += 60; renderMatches(); return; }
+    if (act.dataset.act === 'more'){ const k = act.dataset.sport; sportLimit[k] = (sportLimit[k] || 40) + 40; renderMatches(); return; }
     if (act.dataset.act === 'analyze'){
       const card = e.target.closest('.match-card'); if (card) analyzeSingleMatch(card.dataset.id);
       return;
     }
+  }
+  const sh = e.target.closest('.sport-head');
+  if (sh){
+    if (!sportsTouched){ sportsTouched = true; openSports.clear(); if (lastAutoOpen) openSports.add(lastAutoOpen); }
+    const k = sh.dataset.sport;
+    if (openSports.has(k)) openSports.delete(k); else openSports.add(k);
+    renderMatches(); return;
+  }
+  const lh = e.target.closest('.league-head');
+  if (lh){
+    const k = lh.dataset.lg;
+    if (closedLeagues.has(k)) closedLeagues.delete(k); else closedLeagues.add(k);
+    renderMatches(); return;
   }
   const head = e.target.closest('.match-head');
   if (head){
