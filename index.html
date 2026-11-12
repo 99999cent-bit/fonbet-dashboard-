@@ -136,6 +136,8 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
 .key-row input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px}
 .key-badge{font-size:11px;min-width:84px;text-align:right}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#252b34;border:1px solid var(--accent);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;z-index:60;display:none;max-width:90%}
+.bet[data-mid]{cursor:pointer}
+.bet[data-mid]:active{filter:brightness(1.2)}
 </style>
 </head>
 <body>
@@ -216,6 +218,12 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
     <div class="hint" id="keyReport" style="text-align:left"></div>
   </div>
 </div>
+<div class="modal" id="matchModal" style="display:none">
+  <div class="modal-box" style="max-width:640px">
+    <div class="modal-head"><b>🎯 Матч и прогноз</b><button id="btnCloseMatch">✕</button></div>
+    <div id="matchModalBody"></div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -230,7 +238,8 @@ const openSports = new Set(), closedLeagues = new Set(), sportLimit = {};
 let sportsTouched = false, lastAutoOpen = null;
 const toggledMk = new Set(), aiResults = {};
 let currentPicks = {}, dt = null, expScope = 'live', expN = 5, expResult = null, expVisible = 0;
-const expSel = new Set();
+const expSel = new Set(), showAllMk = new Set();
+let modalId = null;
 const MAX_KEYS = 11;
 let keys = Array(MAX_KEYS).fill(''), keyInfo = Array(MAX_KEYS).fill(null), activeKey = 0, toastTimer = null;
 let paused = false, loading = false, nextAt = 0, pollTimer = null, lastOkAt = 0, lastErr = '';
@@ -274,6 +283,7 @@ window.addEventListener('load', () => {
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !paused) loadOdds(); });
   setInterval(tick, 1000);
   initExpress();
+  initMatchModal();
 
   loadModels();
   loadOdds();
@@ -493,7 +503,7 @@ function processData(data){
   parsedMatches = fresh.concat([...finishedStore.values()]);
   matchById = {}; parsedMatches.forEach(m => matchById[m.id] = m);
   updateDiag(data, fresh);
-  renderMatches();
+  renderAll();
 }
 
 function updateDiag(data, fresh){
@@ -745,34 +755,43 @@ function mkBlock(key, title, html, def){
 }
 
 function renderDetails(m){
+  const es = pickEntries(m).filter(e => e.key);
+  const mainG = new Set(), subG = {};
+  es.forEach(e => { const g = groupOf(e.key); if (!g) return; if (e.sub >= 0) (subG[e.sub] = subG[e.sub] || new Set()).add(g); else mainG.add(g); });
+  const hasFocus = mainG.size > 0 || Object.keys(subG).length > 0;
+  const focus = hasFocus && !showAllMk.has(String(m.id));
   let h = '';
+
   currentPicks = pickMap(m);
   const groups = marketTables(m.odds, m.oddsDir);
   currentPicks = {};
-  groups.forEach(g => h += mkBlock(m.id + '|' + g.title, g.title, g.html, false));
-  if (!groups.length) h += `<div class="log"><span class="t">Основные коэффициенты закрыты</span></div>`;
+  groups.forEach(g => { if (!focus || mainG.has(g.title)) h += mkBlock(m.id + '|' + g.title, g.title, g.html, false); });
+  if (!groups.length && !focus) h += `<div class="log"><span class="t">Основные коэффициенты закрыты</span></div>`;
 
   m.subs.forEach((sb, i) => {
-    const sg = marketTables(sb.odds, {});
+    if (focus && !subG[i]) return;
+    currentPicks = subPickMap(m, i);
+    const sg = marketTables(sb.odds, {}).filter(g => !focus || subG[i].has(g.title));
+    currentPicks = {};
     const body = sg.length ? sg.map(g => `<div class="mk-sub">${esc(g.title)}</div>${g.html}`).join('') : '<span class="log t">Нет коэффициентов</span>';
     h += mkBlock(m.id + '|s' + i, sb.name + (sb.score ? ` (${sb.score})` : ''), body, false);
   });
 
-  if (m.extra.length) h += mkBlock(m.id + '|extra', `Другие рынки (${Math.min(40, m.extra.length)})`, `<div class="chips">` + m.extra.slice(0, 40).map(e => chip(e.label, e.v)).join('') + `</div>`, true);
-
-  const meta = [
-    ['Спорт', m.sport], ['Турнир', m.league],
-    ['Статус', m.status === 'live' ? 'Идёт сейчас' : m.status === 'upcoming' ? 'Ещё не начался' : 'Завершён'],
-    ['Начало', m.start ? fmtStart(m) : '—'],
-    m.status === 'live' ? ['Время', `<span class="timer-full" data-id="${esc(m.id)}">${esc(fmtTimer(m, true))}</span>`] : null,
-    ['Счёт', esc(m.score) + (m.comment ? ` · ${esc(m.comment)}` : '')],
-    ['ID', esc(m.id)]
-  ].filter(Boolean);
-  h += mkBlock(m.id + '|info', 'Информация', `<div class="d-meta">` + meta.map(([k, v]) => `<span>${esc(k)}</span><span>${k === 'Время' || k === 'Счёт' ? v : esc(v)}</span>`).join('') + `</div>`, true);
-
-  const log = matchLog[m.id] || [];
-  h += mkBlock(m.id + '|log', 'История за сессию', `<div class="log">` + (log.length ? log.slice().reverse().map(l => `<span class="t">${clock(l.t)}</span> ${esc(l.text)}`).join('<br>') : '<span class="t">Изменений пока не было</span>') + `</div>`, true);
-
+  if (!focus){
+    if (m.extra.length) h += mkBlock(m.id + '|extra', `Другие рынки (${Math.min(40, m.extra.length)})`, `<div class="chips">` + m.extra.slice(0, 40).map(e => chip(e.label, e.v)).join('') + `</div>`, true);
+    const meta = [
+      ['Спорт', m.sport], ['Турнир', m.league],
+      ['Статус', m.status === 'live' ? 'Идёт сейчас' : m.status === 'upcoming' ? 'Ещё не начался' : 'Завершён'],
+      ['Начало', m.start ? fmtStart(m) : '—'],
+      m.status === 'live' ? ['Время', `<span class="timer-full" data-id="${esc(m.id)}">${esc(fmtTimer(m, true))}</span>`] : null,
+      ['Счёт', esc(m.score) + (m.comment ? ` · ${esc(m.comment)}` : '')],
+      ['ID', esc(m.id)]
+    ].filter(Boolean);
+    h += mkBlock(m.id + '|info', 'Информация', `<div class="d-meta">` + meta.map(([k, v]) => `<span>${esc(k)}</span><span>${k === 'Время' || k === 'Счёт' ? v : esc(v)}</span>`).join('') + `</div>`, true);
+    const log = matchLog[m.id] || [];
+    h += mkBlock(m.id + '|log', 'История за сессию', `<div class="log">` + (log.length ? log.slice().reverse().map(l => `<span class="t">${clock(l.t)}</span> ${esc(l.text)}`).join('<br>') : '<span class="t">Изменений пока не было</span>') + `</div>`, true);
+  }
+  if (hasFocus) h += focus ? `<button class="btn-more" data-act="allmk">📋 Показать все рынки</button>` : `<button class="btn-more" data-act="focusmk">⬆️ Только рынки из прогноза</button>`;
   return aiBox(m) + h;
 }
 
@@ -786,6 +805,10 @@ function onContainerClick(e){
   const act = e.target.closest('[data-act]');
   if (act){
     if (act.dataset.act === 'more'){ const k = act.dataset.sport; sportLimit[k] = (sportLimit[k] || 40) + 40; renderMatches(); return; }
+    if (act.dataset.act === 'allmk' || act.dataset.act === 'focusmk'){
+      const card = e.target.closest('.match-card'); if (card) toggleAllMk(card.dataset.id);
+      return;
+    }
     if (act.dataset.act === 'analyze' || act.dataset.act === 'reanalyze'){
       const card = e.target.closest('.match-card');
       if (card){ openOnly(card); analyzeSingleMatch(card.dataset.id, act.dataset.act === 'reanalyze'); }
@@ -1003,9 +1026,23 @@ function normMk(s){
   mm = s.match(/^(ф1|ф2|тб|тм)\(?(-?\d+(?:\.\d+)?)\)?$/);
   return mm ? mm[1] + '(' + parseFloat(mm[2]) + ')' : s;
 }
-function resolveKey(m, market){
-  const map = {}; Object.keys(m.odds).forEach(k => map[normMk(k)] = k);
+function resolveKeyIn(odds, market){
+  const map = {}; Object.keys(odds).forEach(k => map[normMk(k)] = k);
   return map[normMk(market)] || null;
+}
+const resolveKey = (m, market) => resolveKeyIn(m.odds, market);
+const normName = x => String(x || '').toLowerCase().replace(/[^a-zа-яё0-9]/g, '');
+/* Ставка может быть из основных коэффициентов («П1») или из доп. рынка («желтые карты: П1») */
+function resolvePick(m, market){
+  const str = String(market || ''), k = resolveKey(m, str);
+  if (k) return { key: k, sub: -1 };
+  const idx = str.indexOf(':');
+  if (idx > 0){
+    const nm = normName(str.slice(0, idx));
+    const si = m.subs.findIndex(sb => { const n = normName(sb.name); return n && nm && (n === nm || n.includes(nm) || nm.includes(n)); });
+    if (si >= 0){ const sk = resolveKeyIn(m.subs[si].odds, str.slice(idx + 1)); if (sk) return { key: sk, sub: si }; }
+  }
+  return { key: null, sub: -1 };
 }
 function describeBet(m, key){
   key = String(key || '');
@@ -1020,15 +1057,25 @@ function describeBet(m, key){
   }
   return key;
 }
+function describeSub(m, sb, key){
+  if (key === 'П1') return `${sb.name}: ${m.team1}`;
+  if (key === 'П2') return `${sb.name}: ${m.team2}`;
+  if (key === 'X') return `${sb.name}: поровну`;
+  return `${sb.name}: ${describeBet(m, key)}`;
+}
+const groupOf = k => /^(П1|X|П2)$/.test(k) ? 'Исход' : /^Ф[12]/.test(k) ? 'Фора' : /^Т[БМ]/.test(k) ? 'Тотал' : '';
 function pickEntries(m){
   const r = aiResults[m.id];
   if (!r || r.state !== 'done' || !r.data || !Array.isArray(r.data.bets)) return [];
-  return r.data.bets.map(b => ({ b, key: resolveKey(m, b.market), risk: ['low', 'medium', 'high'].includes(b.risk) ? b.risk : 'medium' }));
+  return r.data.bets.map(b => { const rp = resolvePick(m, b.market); return { b, key: rp.key, sub: rp.sub, risk: ['low', 'medium', 'high'].includes(b.risk) ? b.risk : 'medium' }; });
 }
-function pickMap(m){ const map = {}; pickEntries(m).forEach(e => { if (e.key) map[e.key] = e.risk; }); return map; }
+function pickMap(m){ const map = {}; pickEntries(m).forEach(e => { if (e.key && e.sub < 0) map[e.key] = e.risk; }); return map; }
+function subPickMap(m, i){ const map = {}; pickEntries(m).forEach(e => { if (e.key && e.sub === i) map[e.key] = e.risk; }); return map; }
+function betTitle(m, e){ const sb = e.sub >= 0 ? m.subs[e.sub] : null; return e.key ? (sb ? `${sb.name}: ${e.key}` : e.key) : (e.b.market || ''); }
+function betWho(m, e){ if (!e.key) return ''; const sb = e.sub >= 0 ? m.subs[e.sub] : null; return sb ? describeSub(m, sb, e.key) : describeBet(m, e.key); }
 function pickLine(m){
   const es = pickEntries(m); if (!es.length) return '';
-  return `<div class="pk-line">` + es.map(e => `<span class="pk-chip ${e.risk}">🤖 ${esc(e.key || e.b.market || '')} · ${esc(describeBet(m, e.key || e.b.market))}</span>`).join('') + `</div>`;
+  return `<div class="pk-line">` + es.map(e => { const w = betWho(m, e); return `<span class="pk-chip ${e.risk}">🤖 ${esc(betTitle(m, e))}${w ? ' · ' + esc(w) : ''}</span>`; }).join('') + `</div>`;
 }
 function aiButton(m){
   const r = aiResults[m.id];
@@ -1045,8 +1092,9 @@ function aiBox(m){
   if (d && d.summary) h += `<div class="ai-sum">${esc(d.summary)}</div>`;
   if (d && Array.isArray(d.bets) && d.bets.length){
     pickEntries(m).forEach(e => {
-      const b = e.b, odd = e.key ? m.odds[e.key] : b.odds;
-      h += `<div class="bet ${e.risk}"><div class="bet-top"><b>${esc(e.key || b.market || '')}</b><span class="bet-who">→ ${esc(describeBet(m, e.key || b.market))}</span><span class="bet-odd">${odd !== undefined && odd !== null ? 'кэф ' + esc(odd) : ''}</span><span class="bet-risk">${RISK[e.risk]}</span></div><div class="bet-why">${esc(b.reason || '')}</div></div>`;
+      const b = e.b, sb = e.sub >= 0 ? m.subs[e.sub] : null, w = betWho(m, e);
+      const odd = e.key ? (sb ? sb.odds[e.key] : m.odds[e.key]) : b.odds;
+      h += `<div class="bet ${e.risk}"><div class="bet-top"><b>${esc(betTitle(m, e))}</b>${w ? `<span class="bet-who">→ ${esc(w)}</span>` : ''}<span class="bet-odd">${odd !== undefined && odd !== null ? 'кэф ' + esc(odd) : ''}</span><span class="bet-risk">${RISK[e.risk]}</span></div><div class="bet-why">${esc(b.reason || '')}</div></div>`;
     });
   } else h += `<div class="log">${esc(r.raw || '')}</div>`;
   h += `<div class="ai-foot">Разбор при счёте ${esc(r.score)} в ${clock(r.at)}${r.score !== m.score ? ' · <span class="bad">счёт изменился, пересчитайте</span>' : ''}. ИИ не знает исход матча, это разбор коэффициентов, а не гарантия.</div><button class="btn-more" data-act="reanalyze">🔄 Пересчитать</button></div>`;
@@ -1057,15 +1105,15 @@ async function analyzeSingleMatch(id, force){
   const m = matchById[id]; if (!m) return;
   const cur = aiResults[id];
   if (cur && (cur.state === 'loading' || (cur.state === 'done' && !force))) return;
-  aiResults[id] = { state:'loading' }; renderMatches();
+  aiResults[id] = { state:'loading' }; renderAll();
   const subs = m.subs.map(sb => `${sb.name}${sb.score ? ' (' + sb.score + ')' : ''}: ${JSON.stringify(sb.odds)}`).join('\n');
   const log = (matchLog[m.id] || []).map(l => `${clock(l.t)} ${l.text}`).join('\n');
-  const prompt = `Проанализируй матч.\nТурнир: ${m.league}\nСпорт: ${m.sport}\nМатч: ${m.team1} — ${m.team2}\nСтатус: ${m.status}\nСчет: ${m.score} (${fmtTimer(m, true)})\nКоэффициенты: ${JSON.stringify(m.odds)}\n${subs ? 'Доп. рынки:\n' + subs + '\n' : ''}${log ? 'События:\n' + log + '\n' : ''}\nОтветь ТОЛЬКО JSON без пояснений: {"summary":"1-2 предложения о ситуации в матче","bets":[{"market":"точное название из списка коэффициентов, например П1 или ТБ(2.5)","odds":число,"risk":"low|medium|high","reason":"кратко почему"}]}. Дай от 1 до 3 ставок. risk: low — надёжная, medium — средний риск, high — рискованная. В reason называй команды по названию, а не П1/П2. Русский язык.`;
+  const prompt = `Проанализируй матч.\nТурнир: ${m.league}\nСпорт: ${m.sport}\nМатч: ${m.team1} — ${m.team2}\nСтатус: ${m.status}\nСчет: ${m.score} (${fmtTimer(m, true)})\nКоэффициенты: ${JSON.stringify(m.odds)}\n${subs ? 'Доп. рынки:\n' + subs + '\n' : ''}${log ? 'События:\n' + log + '\n' : ''}\nОтветь ТОЛЬКО JSON без пояснений: {"summary":"1-2 предложения о ситуации в матче","bets":[{"market":"П1 или ТБ(2.5) из основных коэффициентов; для доп. рынка формат: название рынка из списка доп. рынков, двоеточие, ставка (например желтые карты: П1)","odds":число,"risk":"low|medium|high","reason":"кратко почему"}]}. Дай от 1 до 3 ставок. risk: low — надёжная, medium — средний риск, high — рискованная. В reason называй команды по названию, а не П1/П2. Русский язык.`;
   try {
     const raw = await geminiRequest(prompt, true);
     aiResults[id] = { state:'done', raw, data: parseBets(raw), at: Date.now(), score: m.score };
   } catch (err){ aiResults[id] = { state:'error', text: err.message }; }
-  renderMatches();
+  renderAll();
 }
 
 /* ================= Экспресс ================= */
@@ -1102,8 +1150,9 @@ function renderExpressResult(){
   let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная</div>`;
   if (r.summary) h += `<div class="ai-sum">${esc(r.summary)}</div>`;
   h += `<div class="ex-total">Экспресс из ${r.legs.length} событий · общий кэф ≈ <b>${r.total.toFixed(2)}</b></div>`;
+  if (r.legs.length) h += `<div class="ai-foot">Нажмите на ставку, чтобы открыть матч и прогноз.</div>`;
   r.legs.forEach((l, i) => {
-    h += `<div class="bet ${l.risk}"><div class="bet-top"><b>${i + 1}. ${esc(l.market)}</b><span class="bet-who">→ ${esc(l.desc)}</span><span class="bet-odd">кэф ${esc(l.odd)}</span><span class="bet-risk">${RISK[l.risk]}</span></div><div class="ex-leg-match">${esc(l.title)}</div><div class="bet-why">${esc(l.reason)}</div></div>`;
+    h += `<div class="bet ${l.risk}" data-mid="${esc(l.id)}"><div class="bet-top"><b>${i + 1}. ${esc(l.market)}</b><span class="bet-who">→ ${esc(l.desc)}</span><span class="bet-odd">кэф ${esc(l.odd)}</span><span class="bet-risk">${RISK[l.risk]}</span></div><div class="ex-leg-match">${esc(l.title)}</div><div class="bet-why">${esc(l.reason)}</div></div>`;
   });
   h += `<div class="ai-foot">Собрано в ${clock(r.at)} по коэффициентам на этот момент. Чем больше событий, тем ниже шанс, что экспресс пройдёт целиком. ИИ не знает исходов, это не гарантия.</div><button class="btn-more" id="exCopy">📋 Копировать экспресс</button></div>`;
   el.innerHTML = h;
@@ -1133,7 +1182,7 @@ async function buildExpress(){
       const key = resolveKey(m, l.market), odd = key ? Number(m.odds[key]) : Number(l.odds);
       if (!odd || isNaN(odd)) return;
       seen.add(String(m.id));
-      legs.push({ market: key || String(l.market || ''), desc: describeBet(m, key || l.market), odd, risk: ['low', 'medium', 'high'].includes(l.risk) ? l.risk : 'medium', reason: l.reason || '',
+      legs.push({ id: m.id, market: key || String(l.market || ''), desc: describeBet(m, key || l.market), odd, risk: ['low', 'medium', 'high'].includes(l.risk) ? l.risk : 'medium', reason: l.reason || '',
         title: `${m.sportIcon} ${m.league} · ${m.team1} — ${m.team2} (${m.status === 'live' ? '🔴 ' + m.score : fmtStart(m)})` });
     });
     const used = legs.slice(0, n);
@@ -1164,9 +1213,60 @@ function initExpress(){
     updateExInfo();
   });
   $('exResult').addEventListener('click', e => {
+    const lg = e.target.closest('[data-mid]'); if (lg){ openMatchModal(lg.dataset.mid); return; }
     if (!e.target.closest('#exCopy') || !expResult || expResult.state !== 'done') return;
     const txt = expResult.legs.map((l, i) => `${i + 1}. ${l.title.replace(/^\S+\s/, '')}: ${l.desc} (кэф ${l.odd})`).join('\n') + `\nОбщий кэф ≈ ${expResult.total.toFixed(2)}`;
     if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => { e.target.textContent = '✅ Скопировано'; }).catch(() => {});
+  });
+}
+
+function renderAll(){ renderMatches(); refreshMatchModal(); }
+function toggleAllMk(id){
+  id = String(id);
+  if (showAllMk.has(id)) showAllMk.delete(id); else showAllMk.add(id);
+  renderAll();
+}
+function refreshMatchModal(){
+  if (modalId === null || $('matchModal').style.display === 'none') return;
+  const m = matchById[modalId];
+  $('matchModalBody').innerHTML = m
+    ? cardHtml(m, true).replace('class="details "', 'class="details open"').replace(/<button class="btn-analyze-match"[\s\S]*?<\/button>/, '')
+    : '<div class="status-msg">Матч уже недоступен (завершён или убран из линии).</div>';
+}
+function openMatchModal(id){
+  const m = matchById[String(id)];
+  if (!m){ toast('Матч уже недоступен'); return; }
+  if (!aiResults[m.id] && expResult && expResult.state === 'done'){
+    const leg = expResult.legs.find(l => String(l.id) === String(m.id));
+    if (leg) aiResults[m.id] = { state:'done', raw:'', at: expResult.at, score: m.score,
+      data: { summary: 'Ставка из экспресса. Нажмите «Пересчитать», чтобы получить полный разбор матча.', bets: [{ market: leg.market, risk: leg.risk, reason: leg.reason }] } };
+  }
+  modalId = String(m.id);
+  $('matchModal').style.display = 'flex';
+  refreshMatchModal();
+  renderMatches();
+}
+function initMatchModal(){
+  const modal = $('matchModal');
+  const close = () => { modal.style.display = 'none'; modalId = null; };
+  $('btnCloseMatch').addEventListener('click', close);
+  modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  $('matchModalBody').addEventListener('click', e => {
+    const card = e.target.closest('.match-card'); if (!card) return;
+    const act = e.target.closest('[data-act]');
+    if (act){
+      const a = act.dataset.act;
+      if (a === 'analyze' || a === 'reanalyze') analyzeSingleMatch(card.dataset.id, a === 'reanalyze');
+      else if (a === 'allmk' || a === 'focusmk') toggleAllMk(card.dataset.id);
+      return;
+    }
+    const mh = e.target.closest('.mk-head');
+    if (mh){
+      const k = mh.dataset.mk;
+      if (toggledMk.has(k)) toggledMk.delete(k); else toggledMk.add(k);
+      const body = mh.nextElementSibling; body.classList.toggle('shut');
+      mh.lastElementChild.textContent = body.classList.contains('shut') ? '▸' : '▾';
+    }
   });
 }
 
