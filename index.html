@@ -92,6 +92,20 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
 .mk-tot .par{color:var(--muted);font-weight:700;text-align:center;font-size:12px}
 .mk-sub{font-size:11px;color:var(--muted);margin:2px 0 0}
 .mk .odd-btn{font-size:12.5px;padding:8px}
+.ai-box{background:#13171c;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px}
+.ai-legend{font-size:11px;color:var(--muted);margin-bottom:6px}
+.ai-sum{font-size:13px;line-height:1.45;margin-bottom:8px}
+.bet{border-left:4px solid;border-radius:6px;padding:8px 10px;margin-bottom:6px}
+.bet.low{border-color:var(--accent);background:rgba(0,230,118,.10)}
+.bet.medium{border-color:#ffb300;background:rgba(255,179,0,.10)}
+.bet.high{border-color:var(--red);background:rgba(255,61,87,.10)}
+.bet-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13.5px}
+.bet-odd{color:var(--muted);font-size:12px}.bet-risk{margin-left:auto;font-size:11px;font-weight:700}
+.bet.low .bet-risk{color:var(--accent)}.bet.medium .bet-risk{color:#ffb300}.bet.high .bet-risk{color:var(--red)}
+.bet-why{font-size:12.5px;color:#cfd8dc;margin-top:4px;line-height:1.4}
+.ai-foot{font-size:11px;color:var(--muted);margin:6px 0}
+.odd-btn.pick-low{outline:2px solid var(--accent)}.odd-btn.pick-medium{outline:2px solid #ffb300}.odd-btn.pick-high{outline:2px solid var(--red)}
+.btn-analyze-match{margin-top:2px}.btn-analyze-match:disabled{opacity:.6}
 </style>
 </head>
 <body>
@@ -144,6 +158,7 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
   <button class="tab-btn finished" data-tab="finished">🏁 Закрытые</button>
 </div>
 
+<div class="filters" id="sportBar"></div>
 <input type="text" class="search-box" id="searchInput" placeholder="🔍 Поиск матча...">
 <div id="matchesContainer"><div class="status-msg">Загрузка...</div></div>
 
@@ -159,7 +174,8 @@ const expanded = new Set();
 let currentSport = 'all', currentStatusTab = 'top', visibleLimit = 60;
 const openSports = new Set(), closedLeagues = new Set(), sportLimit = {};
 let sportsTouched = false, lastAutoOpen = null;
-const toggledMk = new Set();
+const toggledMk = new Set(), aiResults = {};
+let currentPicks = {};
 let paused = false, loading = false, nextAt = 0, pollTimer = null, lastOkAt = 0, lastErr = '';
 
 const $ = id => document.getElementById(id);
@@ -194,6 +210,10 @@ window.addEventListener('load', () => {
     btn.classList.add('active'); renderMatches();
   }));
   $('matchesContainer').addEventListener('click', onContainerClick);
+  $('sportBar').addEventListener('click', e => {
+    const b = e.target.closest('[data-sport]'); if (!b) return;
+    currentSport = b.dataset.sport; renderMatches();
+  });
 
   document.addEventListener('visibilitychange', () => { if (!document.hidden && !paused) loadOdds(); });
   setInterval(tick, 1000);
@@ -473,9 +493,9 @@ function passFilters(m, q){
 }
 
 function cardHtml(m, showLeague){
-  const entries = Object.entries(m.odds);
+  const entries = Object.entries(m.odds), pk = pickMap(m);
   const oddsHtml = entries.length
-    ? `<div class="odds-grid">` + entries.map(([k, v]) => `<div class="odd-btn ${m.oddsDir[k] || ''}"><span class="odd-label">${esc(k)}</span><span class="odd-val">${esc(v)}</span></div>`).join('') + `</div>`
+    ? `<div class="odds-grid">` + entries.map(([k, v]) => `<div class="odd-btn ${m.oddsDir[k] || ''} ${pk[k] ? 'pick-' + pk[k] : ''}"><span class="odd-label">${esc(k)}</span><span class="odd-val">${esc(v)}</span></div>`).join('') + `</div>`
     : `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Коэффициенты закрыты</div>`;
   const badge = m.status === 'live'
     ? `<span class="status-badge status-live"><span class="live-dot"></span><span class="live-timer" data-id="${esc(m.id)}">${esc(fmtTimer(m, false))}</span></span>`
@@ -493,6 +513,7 @@ function cardHtml(m, showLeague){
         </div>
         ${oddsHtml}
       </div>
+      ${aiButton(m)}
       <div class="details ${open}" id="d${esc(m.id)}">${renderDetails(m)}</div>
     </div>`;
 }
@@ -520,10 +541,35 @@ function renderTop(base){
   return h;
 }
 
+function passSearch(m, q){
+  return !q || m.team1.toLowerCase().includes(q) || m.team2.toLowerCase().includes(q) || m.league.toLowerCase().includes(q);
+}
+function topOk(m){ const n = Object.keys(m.odds).length; return m.tier >= 0 && n > 0 && (m.tier >= 1 || n >= 10); }
+function isTopCandidate(m){
+  return topOk(m) && ((m.status === 'live') || (m.status === 'upcoming' && (!m.start || m.start - Date.now() / 1000 < 86400)));
+}
+function renderSportBar(inSearch){
+  const bar = $('sportBar'), sl = bar.scrollLeft;
+  const tabFn = currentStatusTab === 'top' ? isTopCandidate : (m => m.status === currentStatusTab);
+  const cnt = {}, meta = {}; let total = 0;
+  parsedMatches.forEach(m => { meta[m.sportKey] = { name:m.sport, icon:m.sportIcon }; });
+  inSearch.filter(tabFn).forEach(m => { cnt[m.sportKey] = (cnt[m.sportKey] || 0) + 1; total++; });
+  const order = SPORTS.map(x => x[0]);
+  const keys = Object.keys(meta).filter(k => cnt[k] || k === currentSport).sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || (cnt[b] || 0) - (cnt[a] || 0);
+  });
+  bar.innerHTML = `<button class="filter-btn ${currentSport === 'all' ? 'active' : ''}" data-sport="all">Все (${total})</button>` +
+    keys.map(k => `<button class="filter-btn ${k === currentSport ? 'active' : ''}" data-sport="${esc(k)}">${meta[k].icon} ${esc(meta[k].name)} (${cnt[k] || 0})</button>`).join('');
+  bar.scrollLeft = sl;
+}
+
 function renderMatches(){
   const container = $('matchesContainer');
   const q = $('searchInput').value.trim().toLowerCase();
-  const base = parsedMatches.filter(m => passFilters(m, q));
+  const inSearch = parsedMatches.filter(m => passSearch(m, q));
+  const base = inSearch.filter(m => currentSport === 'all' || m.sportKey === currentSport);
+  renderSportBar(inSearch);
   const counts = { live:0, upcoming:0, finished:0 };
   base.forEach(m => counts[m.status]++);
   document.querySelector('.tab-btn.live').textContent = `🔴 Лайв (${counts.live})`;
@@ -558,8 +604,9 @@ function renderMatches(){
 
   let html = `<div class="hint">Нажмите на вид спорта, чтобы открыть список. Нажмите на матч — подробности.</div>`;
   arr.forEach(sp => {
-    const isOpen = q ? true : (sportsTouched ? openSports.has(sp.key) : sp.key === lastAutoOpen);
-    html += `<div class="sport-head" data-sport="${esc(sp.key)}"><span>${sp.icon} ${esc(sp.name)}</span><span class="cnt">${sp.count} ${isOpen ? '▾' : '▸'}</span></div>`;
+    const single = currentSport !== 'all';
+    const isOpen = single || q ? true : (sportsTouched ? openSports.has(sp.key) : sp.key === lastAutoOpen);
+    if (!single) html += `<div class="sport-head" data-sport="${esc(sp.key)}"><span>${sp.icon} ${esc(sp.name)}</span><span class="cnt">${sp.count} ${isOpen ? '▾' : '▸'}</span></div>`;
     if (!isOpen) return;
     const lim = sportLimit[sp.key] || 40;
     let shown = 0, more = false;
@@ -577,7 +624,7 @@ function renderMatches(){
 }
 
 const nParam = p => { const n = parseFloat(String(p).replace(',', '.')); return isNaN(n) ? null : n; };
-const oddCell = (label, val, dir) => `<div class="odd-btn ${dir || ''}"><span class="odd-label">${esc(label)}</span><span class="odd-val">${esc(val)}${dir === 'up' ? ' ▲' : dir === 'down' ? ' ▼' : ''}</span></div>`;
+const oddCell = (label, val, dir) => `<div class="odd-btn ${dir || ''} ${currentPicks[label] ? 'pick-' + currentPicks[label] : ''}"><span class="odd-label">${esc(label)}</span><span class="odd-val">${esc(val)}${dir === 'up' ? ' ▲' : dir === 'down' ? ' ▼' : ''}</span></div>`;
 
 /* Разбираем коэффициенты в таблицы: Исход / Фора / Тотал */
 function marketTables(odds, dirs){
@@ -618,7 +665,9 @@ function mkBlock(key, title, html, def){
 
 function renderDetails(m){
   let h = '';
+  currentPicks = pickMap(m);
   const groups = marketTables(m.odds, m.oddsDir);
+  currentPicks = {};
   groups.forEach(g => h += mkBlock(m.id + '|' + g.title, g.title, g.html, false));
   if (!groups.length) h += `<div class="log"><span class="t">Основные коэффициенты закрыты</span></div>`;
 
@@ -643,15 +692,22 @@ function renderDetails(m){
   const log = matchLog[m.id] || [];
   h += mkBlock(m.id + '|log', 'История за сессию', `<div class="log">` + (log.length ? log.slice().reverse().map(l => `<span class="t">${clock(l.t)}</span> ${esc(l.text)}`).join('<br>') : '<span class="t">Изменений пока не было</span>') + `</div>`, true);
 
-  return h + `<button class="btn-analyze-match" data-act="analyze">⚡ AI Анализ матча</button>`;
+  return aiBox(m) + h;
+}
+
+function openOnly(card){
+  document.querySelectorAll('.details.open').forEach(d => d.classList.remove('open'));
+  expanded.clear(); expanded.add(String(card.dataset.id));
+  card.querySelector('.details').classList.add('open');
 }
 
 function onContainerClick(e){
   const act = e.target.closest('[data-act]');
   if (act){
     if (act.dataset.act === 'more'){ const k = act.dataset.sport; sportLimit[k] = (sportLimit[k] || 40) + 40; renderMatches(); return; }
-    if (act.dataset.act === 'analyze'){
-      const card = e.target.closest('.match-card'); if (card) analyzeSingleMatch(card.dataset.id);
+    if (act.dataset.act === 'analyze' || act.dataset.act === 'reanalyze'){
+      const card = e.target.closest('.match-card');
+      if (card){ openOnly(card); analyzeSingleMatch(card.dataset.id, act.dataset.act === 'reanalyze'); }
       return;
     }
   }
@@ -678,10 +734,9 @@ function onContainerClick(e){
   }
   const head = e.target.closest('.match-head');
   if (head){
-    const card = head.closest('.match-card'), id = String(card.dataset.id);
-    const det = card.querySelector('.details');
-    if (expanded.has(id)){ expanded.delete(id); det.classList.remove('open'); }
-    else { expanded.add(id); det.classList.add('open'); }
+    const card = head.closest('.match-card');
+    if (expanded.has(String(card.dataset.id))){ expanded.clear(); card.querySelector('.details').classList.remove('open'); }
+    else { openOnly(card); card.scrollIntoView({ block:'nearest', behavior:'smooth' }); }
   }
 }
 
@@ -719,33 +774,83 @@ async function loadModels(){
   }
 }
 
-async function callGemini(promptText){
-  const apiKey = $('geminiKey').value.trim(), model = $('modelSelect').value, out = $('aiOutput');
-  if (!apiKey){ out.textContent = '⚠️ Вставьте ключ Gemini API.'; return; }
-  if (!model){ out.textContent = '⚠️ Сначала нажмите «Проверить ключ» и выберите модель.'; return; }
-  out.textContent = `⏳ Отправка запроса модели ${model}...`;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+async function geminiRequest(promptText, asJson){
+  const apiKey = $('geminiKey').value.trim(), model = $('modelSelect').value;
+  if (!apiKey) throw new Error('⚠️ Вставьте ключ Gemini API.');
+  if (!model) throw new Error('⚠️ Сначала нажмите «Проверить ключ» и выберите модель.');
   const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 60000);
   try {
+    const body = { contents: [{ parts: [{ text: promptText }] }] };
+    if (asJson) body.generationConfig = { responseMimeType: 'application/json' };
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] }), signal: ctrl.signal
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body), signal: ctrl.signal
     });
     const data = await r.json();
-    if (data.error){ out.textContent = `❌ Ошибка API (${model}): ${data.error.message}\n\nВыберите другую модель или нажмите «Проверить ключ».`; return; }
+    if (data.error) throw new Error(`❌ Ошибка API (${model}): ${data.error.message}`);
     const cand = data.candidates && data.candidates[0];
     const text = cand && cand.content && cand.content.parts && cand.content.parts.map(p => p.text || '').join('');
-    out.textContent = text || ('⚠️ Пустой ответ. ' + (data.promptFeedback && data.promptFeedback.blockReason ? 'Запрос заблокирован: ' + data.promptFeedback.blockReason : (cand && cand.finishReason ? 'Причина: ' + cand.finishReason : '')));
+    if (!text) throw new Error('⚠️ Пустой ответ. ' + (data.promptFeedback && data.promptFeedback.blockReason ? 'Запрос заблокирован: ' + data.promptFeedback.blockReason : ''));
+    return text;
   } catch (err){
-    out.textContent = err.name === 'AbortError' ? `⏳ Таймаут 60 секунд. Модель ${model} не ответила. Попробуйте другую модель или VPN.` : `❌ Ошибка сети: ${err.message}\nПроверьте интернет или VPN.`;
+    if (err.name === 'AbortError') throw new Error('⏳ Таймаут 60 секунд. Попробуйте другую модель или VPN.');
+    if (err instanceof TypeError) throw new Error('❌ Ошибка сети: ' + err.message + '. Проверьте интернет или VPN.');
+    throw err;
   } finally { clearTimeout(timer); }
 }
 
-function analyzeSingleMatch(id){
+async function callGemini(promptText){
+  const out = $('aiOutput');
+  out.textContent = '⏳ Отправка запроса...';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  try { out.textContent = await geminiRequest(promptText, false); } catch (err){ out.textContent = err.message; }
+}
+
+const RISK = { low:'🟢 Надёжная', medium:'🟡 Средний риск', high:'🔴 Рискованная' };
+function parseBets(raw){
+  try { const t = raw.replace(/```json|```/g, '').trim(); return JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)); } catch (e){ return null; }
+}
+function pickMap(m){
+  const r = aiResults[m.id], map = {};
+  if (r && r.state === 'done' && r.data && Array.isArray(r.data.bets)) r.data.bets.forEach(b => { if (b && b.market) map[b.market] = ['low', 'medium', 'high'].includes(b.risk) ? b.risk : 'medium'; });
+  return map;
+}
+function aiButton(m){
+  const r = aiResults[m.id];
+  const label = !r ? '⚡ AI Анализ матча' : r.state === 'loading' ? '⏳ Анализ...' : r.state === 'done' ? '🤖 Прогноз готов — показать' : '⚠️ Ошибка — повторить';
+  return `<button class="btn-analyze-match" data-act="analyze"${r && r.state === 'loading' ? ' disabled' : ''}>${label}</button>`;
+}
+function aiBox(m){
+  const r = aiResults[m.id];
+  if (!r) return '';
+  if (r.state === 'loading') return `<div class="ai-box"><div class="log">⏳ Gemini анализирует матч...</div></div>`;
+  if (r.state === 'error') return `<div class="ai-box"><div class="bad">${esc(r.text)}</div><button class="btn-more" data-act="reanalyze">🔄 Повторить</button></div>`;
+  const d = r.data;
+  let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная (подсвечены и в таблицах коэффициентов)</div>`;
+  if (d && d.summary) h += `<div class="ai-sum">${esc(d.summary)}</div>`;
+  if (d && Array.isArray(d.bets) && d.bets.length){
+    d.bets.forEach(b => {
+      const risk = ['low', 'medium', 'high'].includes(b.risk) ? b.risk : 'medium';
+      const odd = m.odds[b.market] !== undefined ? m.odds[b.market] : b.odds;
+      h += `<div class="bet ${risk}"><div class="bet-top"><b>${esc(b.market || '')}</b><span class="bet-odd">${odd !== undefined && odd !== null ? 'кэф ' + esc(odd) : ''}</span><span class="bet-risk">${RISK[risk]}</span></div><div class="bet-why">${esc(b.reason || '')}</div></div>`;
+    });
+  } else h += `<div class="log">${esc(r.raw || '')}</div>`;
+  h += `<div class="ai-foot">Разбор при счёте ${esc(r.score)} в ${clock(r.at)}${r.score !== m.score ? ' · <span class="bad">счёт изменился, пересчитайте</span>' : ''}. ИИ не знает исход матча, это разбор коэффициентов, а не гарантия.</div><button class="btn-more" data-act="reanalyze">🔄 Пересчитать</button></div>`;
+  return h;
+}
+
+async function analyzeSingleMatch(id, force){
   const m = matchById[id]; if (!m) return;
-  const subs = m.subs.map(s => `${s.name}${s.score ? ' ('+s.score+')' : ''}: ${JSON.stringify(s.odds)}`).join('\n');
+  const cur = aiResults[id];
+  if (cur && (cur.state === 'loading' || (cur.state === 'done' && !force))) return;
+  aiResults[id] = { state:'loading' }; renderMatches();
+  const subs = m.subs.map(sb => `${sb.name}${sb.score ? ' (' + sb.score + ')' : ''}: ${JSON.stringify(sb.odds)}`).join('\n');
   const log = (matchLog[m.id] || []).map(l => `${clock(l.t)} ${l.text}`).join('\n');
-  callGemini(`Проанализируй матч:\nТурнир: ${m.league}\nСпорт: ${m.sport}\nМатч: ${m.team1} — ${m.team2}\nСтатус: ${m.status}\nСчет: ${m.score} (${fmtTimer(m, true)})\nКэфы: ${JSON.stringify(m.odds)}\n${subs ? 'Доп. рынки:\n' + subs + '\n' : ''}${log ? 'События:\n' + log + '\n' : ''}Дай ставку и прогноз.`);
+  const prompt = `Проанализируй матч.\nТурнир: ${m.league}\nСпорт: ${m.sport}\nМатч: ${m.team1} — ${m.team2}\nСтатус: ${m.status}\nСчет: ${m.score} (${fmtTimer(m, true)})\nКоэффициенты: ${JSON.stringify(m.odds)}\n${subs ? 'Доп. рынки:\n' + subs + '\n' : ''}${log ? 'События:\n' + log + '\n' : ''}\nОтветь ТОЛЬКО JSON без пояснений: {"summary":"1-2 предложения о ситуации в матче","bets":[{"market":"точное название из списка коэффициентов, например П1 или ТБ(2.5)","odds":число,"risk":"low|medium|high","reason":"кратко почему"}]}. Дай от 1 до 3 ставок. risk: low — надёжная, medium — средний риск, high — рискованная. Русский язык.`;
+  try {
+    const raw = await geminiRequest(prompt, true);
+    aiResults[id] = { state:'done', raw, data: parseBets(raw), at: Date.now(), score: m.score };
+  } catch (err){ aiResults[id] = { state:'error', text: err.message }; }
+  renderMatches();
 }
 
 function analyzeTopLine(){
