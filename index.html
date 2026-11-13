@@ -271,6 +271,8 @@ let currentSport = 'all', currentStatusTab = 'top', visibleLimit = 60;
 const openSports = new Set(), closedLeagues = new Set(), sportLimit = {};
 let sportsTouched = false, lastAutoOpen = null;
 const toggledMk = new Set(), aiResults = {};
+let topOrder = [], topSet = new Set(), topActive = false;
+let DC_MAP = (() => { try { return JSON.parse(localStorage.getItem('fb_dc') || '{}'); } catch (e){ return {}; } })();
 let currentPicks = {}, dt = null, expScope = 'live', expN = 5, expResult = null, expVisible = 0;
 const expSel = new Set(), showAllMk = new Set();
 let modalId = null;
@@ -364,6 +366,7 @@ function factorLabel(id, param){
   if (id===928||id===938) return `Ф2(${param})`;
   if (id===930||id===940) return `ТБ(${param})`;
   if (id===931||id===941) return `ТМ(${param})`;
+  if (DC_MAP[id]) return DC_MAP[id];
   return null;
 }
 function parseFactors(arr){
@@ -390,6 +393,31 @@ function detectStatus(ev, misc, nowSec){
   return { status:'upcoming', start };
 }
 
+/* ID 924/925/1571 похожи на двойной шанс. Не верим на слово: сверяем с расчётом из П1/X/П2 по всем матчам и принимаем только при уверенном совпадении */
+const DC_IDS = [924, 925, 1571];
+const DC_HYP = { '1X': (a, x, b) => 1 / (1 / a + 1 / x), 'X2': (a, x, b) => 1 / (1 / x + 1 / b), '12': (a, x, b) => 1 / (1 / a + 1 / b) };
+function verifyDC(fresh){
+  if (Object.keys(DC_MAP).length === 3) return false;
+  const err = {}; DC_IDS.forEach(id => { err[id] = { '1X':[0, 0], 'X2':[0, 0], '12':[0, 0] }; });
+  fresh.forEach(m => {
+    const a = Number(m.odds['П1']), x = Number(m.odds['X']), b = Number(m.odds['П2']);
+    if (!(a > 1 && x > 1 && b > 1)) return;
+    m.extra.forEach(e => {
+      const id = parseInt(String(e.label).slice(1), 10); if (!err[id]) return;
+      const v = Number(e.v); if (!(v > 1)) return;
+      for (const h in DC_HYP){ err[id][h][0] += Math.abs(Math.log(v / DC_HYP[h](a, x, b))); err[id][h][1]++; }
+    });
+  });
+  const res = {}, used = new Set();
+  for (const id of DC_IDS){
+    const arr = Object.entries(err[id]).map(([h, [sum, n]]) => [h, n ? sum / n : 9, n]).sort((p, q) => p[1] - q[1]);
+    if (arr[0][2] < 30 || arr[0][1] > 0.12 || arr[1][1] - arr[0][1] < 0.04 || used.has(arr[0][0])) return false;
+    res[id] = arr[0][0]; used.add(arr[0][0]);
+  }
+  DC_MAP = res; try { localStorage.setItem('fb_dc', JSON.stringify(res)); } catch (e){}
+  return true;
+}
+
 function buildMatches(data){
   const sportsMap = {}; (data.sports || []).forEach(s => sportsMap[s.id] = s);
   const miscMap = {}; (data.eventMiscs || []).forEach(m => miscMap[m.id] = m);
@@ -399,7 +427,8 @@ function buildMatches(data){
     else if (cf.e && cf.f !== undefined){ (factorsMap[cf.e] = factorsMap[cf.e] || []).push(cf); }
   });
   const subEventsMap = {};
-  data.events.forEach(ev => { if (ev.level > 1 && ev.parentId) (subEventsMap[ev.parentId] = subEventsMap[ev.parentId] || []).push(ev); });
+  const subParent = {};
+  data.events.forEach(ev => { if (ev.level > 1 && ev.parentId){ (subEventsMap[ev.parentId] = subEventsMap[ev.parentId] || []).push(ev); subParent[ev.id] = ev.parentId; } });
 
   const fresh = [], nowSec = Math.floor(Date.now() / 1000), fetchedAt = Date.now();
 
@@ -437,6 +466,7 @@ function buildMatches(data){
       odds: pf.main, extra: pf.extra, subs, oddsDir: {}, scoreChanged: false
     });
   });
+  fresh.subParent = subParent;
   return fresh;
 }
 
@@ -473,7 +503,7 @@ function leagueTier(l){
 }
 function topScore(m){
   const soon = m.status === 'upcoming' && m.start && (m.start * 1000 - Date.now()) < 3 * 3600e3 ? 15 : 0;
-  return m.tier * 100 + Math.min(20, Object.keys(m.odds).length + m.subs.length * 2) + (m.status === 'live' ? 30 : 0) + soon;
+  return (topSet.has(String(m.id)) ? 300 : 0) + m.tier * 100 + Math.min(20, Object.keys(m.odds).length + m.subs.length * 2) + (m.status === 'live' ? 30 : 0) + soon;
 }
 
 /* ================= Загрузка и обнаружение изменений ================= */
@@ -502,8 +532,33 @@ function pushFeed(m, oldScore){
   feedItems = feedItems.slice(0, 8); renderFeed();
 }
 
+function topIdsFrom(te){
+  const out = [];
+  const push = v => {
+    if (v === null || v === undefined) return;
+    if (typeof v === 'number' || typeof v === 'string') out.push(String(v));
+    else if (Array.isArray(v)) v.forEach(push);
+    else if (typeof v === 'object'){
+      const id = v.id ?? v.eventId ?? v.e ?? v.event;
+      if (id !== undefined) push(id); else Object.values(v).forEach(x => { if (Array.isArray(x) || typeof x === 'number') push(x); });
+    }
+  };
+  push(te); return out;
+}
+function setTop(data, fresh){
+  const ids = new Set(fresh.map(m => String(m.id))), seen = new Set();
+  topOrder = [];
+  topIdsFrom(data.topEvents).forEach(id => {
+    let mid = ids.has(id) ? id : (fresh.subParent && fresh.subParent[id] !== undefined ? String(fresh.subParent[id]) : null);
+    if (mid && ids.has(mid) && !seen.has(mid)){ seen.add(mid); topOrder.push(mid); }
+  });
+  topSet = new Set(topOrder); topActive = topOrder.length > 0;
+}
+
 function processData(data){
-  const fresh = buildMatches(data);
+  let fresh = buildMatches(data);
+  if (verifyDC(fresh)) fresh = buildMatches(data);
+  setTop(data, fresh);
   const firstLoad = Object.keys(prevState).length === 0;
 
   fresh.forEach(m => {
@@ -565,6 +620,12 @@ function updateDiag(data, fresh){
     m.subs.forEach(sb => { sb.extra.forEach(e => bump(ids, e.label.split(' ')[0])); if (!Object.keys(sb.odds).length && sb.extra.length) bump(empt, sb.name); });
   });
   const top = o => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, v]) => `${k}×${v}`).join(', ') || '—';
+  const smp = v => { try { return JSON.stringify(v).slice(0, 160); } catch (e){ return '?'; } };
+  out.push(`topEvents: ${Array.isArray(data.topEvents) ? data.topEvents.length + ' шт.' : typeof data.topEvents}, распознано матчей: ${topOrder.length}; пример: ${smp(Array.isArray(data.topEvents) ? data.topEvents[0] : data.topEvents)}`);
+  out.push('topParameters: ' + smp(data.topParameters));
+  out.push('eventBlocks[0]: ' + smp((data.eventBlocks || [])[0]));
+  out.push('liveEventInfos[0]: ' + smp((data.liveEventInfos || [])[0]));
+  out.push('Двойной шанс (авто-проверка): ' + (Object.keys(DC_MAP).length ? JSON.stringify(DC_MAP) : 'пока не подтверждён'));
   out.push('Нераспознанные ID коэффициентов (топ): ' + top(ids));
   out.push('Доп. рынки, где все коэффициенты нераспознаны: ' + top(empt));
   $('diagOut').textContent = out.join('\n');
@@ -640,6 +701,18 @@ function topList(arr){
 }
 
 function renderTop(base){
+  if (!topActive) return renderTopHeuristic(base);
+  const pos = new Map(topOrder.map((id, i) => [id, i]));
+  const list = base.filter(m => topSet.has(String(m.id)) && m.status !== 'finished').sort((a, b) => pos.get(String(a.id)) - pos.get(String(b.id)));
+  if (!list.length) return `<div class="status-msg">Топ-матчей Fonbet по выбранным фильтрам нет.</div>`;
+  const live = list.filter(m => m.status === 'live'), soon = list.filter(m => m.status !== 'live');
+  let h = `<div class="hint">Список топ-матчей получен от Fonbet, порядок как на сайте.</div>`;
+  if (live.length) h += `<div class="top-sec">🔴 Топ Fonbet — сейчас играют (${live.length})</div>` + topList(live);
+  if (soon.length) h += `<div class="top-sec">📅 Топ Fonbet — скоро (${soon.length})</div>` + topList(soon);
+  return h;
+}
+
+function renderTopHeuristic(base){
   const mk = m => Object.keys(m.odds).length;
   const ok = m => m.tier >= 0 && mk(m) > 0 && (m.tier >= 1 || mk(m) >= 10);
   const live = base.filter(m => m.status === 'live' && ok(m)).sort((a, b) => topScore(b) - topScore(a)).slice(0, 20).sort((a, b) => a.idx - b.idx);
@@ -680,6 +753,7 @@ function passSearch(m, q){
 }
 function topOk(m){ const n = Object.keys(m.odds).length; return m.tier >= 0 && n > 0 && (m.tier >= 1 || n >= 10); }
 function isTopCandidate(m){
+  if (topActive) return topSet.has(String(m.id)) && m.status !== 'finished';
   return topOk(m) && ((m.status === 'live') || (m.status === 'upcoming' && (!m.start || m.start - Date.now() / 1000 < 86400)));
 }
 function renderSportBar(inSearch){
@@ -772,6 +846,9 @@ function marketTables(odds, dirs){
   dirs = dirs || {}; const out = [];
   const res = ['П1', 'X', 'П2'].filter(k => odds[k] !== undefined);
   if (res.length) out.push({ title:'Исход', html:`<div class="mk-row3">${res.map(k => oddCell(k, odds[k], dirs[k])).join('')}</div>` });
+
+  const dcK = ['1X', 'X2', '12'].filter(k => odds[k] !== undefined);
+  if (dcK.length) out.push({ title:'Двойной шанс', html:`<div class="mk-row3">${dcK.map(k => oddCell(k, odds[k], dirs[k])).join('')}</div>` });
 
   const f1 = [], f2 = [], tot = {};
   Object.keys(odds).forEach(k => {
@@ -1119,6 +1196,9 @@ function describeBet(m, key){
   if (key === 'П1') return `Победа: ${m.team1}`;
   if (key === 'П2') return `Победа: ${m.team2}`;
   if (key === 'X') return 'Ничья';
+  if (key === '1X') return `${m.team1} или ничья`;
+  if (key === 'X2') return `Ничья или ${m.team2}`;
+  if (key === '12') return 'Победа любой команды (без ничьей)';
   const mm = key.match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/);
   if (mm){
     if (mm[1] === 'Ф1') return `${m.team1} с форой ${mm[2]}`;
@@ -1133,7 +1213,7 @@ function describeSub(m, sb, key){
   if (key === 'X') return `${sb.name}: поровну`;
   return `${sb.name}: ${describeBet(m, key)}`;
 }
-const groupOf = k => /^(П1|X|П2)$/.test(k) ? 'Исход' : /^Ф[12]/.test(k) ? 'Фора' : /^Т[БМ]/.test(k) ? 'Тотал' : '';
+const groupOf = k => /^(П1|X|П2)$/.test(k) ? 'Исход' : /^(1X|X2|12)$/.test(k) ? 'Двойной шанс' : /^Ф[12]/.test(k) ? 'Фора' : /^Т[БМ]/.test(k) ? 'Тотал' : '';
 function pickEntries(m){
   const r = aiResults[m.id];
   if (!r || r.state !== 'done' || !r.data || !Array.isArray(r.data.bets)) return [];
@@ -1411,6 +1491,9 @@ function evalPred(p, t){
   if (k === 'П1') return a > b ? 'won' : 'lost';
   if (k === 'П2') return b > a ? 'won' : 'lost';
   if (k === 'X') return a === b ? 'won' : 'lost';
+  if (k === '1X') return a >= b ? 'won' : 'lost';
+  if (k === 'X2') return b >= a ? 'won' : 'lost';
+  if (k === '12') return a !== b ? 'won' : 'lost';
   const mm = k.match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/); if (!mm) return 'unknown';
   const p0 = parseFloat(String(mm[2]).replace(',', '.')); if (isNaN(p0)) return 'unknown';
   const lines = ((p0 * 4) % 2 !== 0) ? [p0 - 0.25, p0 + 0.25] : [p0];   // четвертные линии делим пополам
@@ -1536,7 +1619,7 @@ function expCard(ex, pm, no){
 function breakdownHtml(ps){
   const rows = [['🟢 Надёжные', p => p.risk === 'low'], ['🟡 Средний риск', p => p.risk === 'medium'], ['🔴 Рискованные', p => p.risk === 'high'],
     ['Исход', p => !p.sub && groupOf(p.market) === 'Исход'], ['Фора', p => !p.sub && groupOf(p.market) === 'Фора'],
-    ['Тотал', p => !p.sub && groupOf(p.market) === 'Тотал'], ['Доп. рынки', p => !!p.sub]];
+    ['Двойной шанс', p => !p.sub && groupOf(p.market) === 'Двойной шанс'], ['Тотал', p => !p.sub && groupOf(p.market) === 'Тотал'], ['Доп. рынки', p => !!p.sub]];
   const out = rows.map(([n, f]) => { const c = tally(ps.filter(f).map(p => p.state)); return c.won + c.lost ? `<div class="bd-row"><span>${n}</span><span>✅ ${c.won} · ❌ ${c.lost} · ${c.pct}%</span></div>` : ''; }).join('');
   return `<div class="bd"><b>Точность по типам ставок</b>${out || '<div class="hint" style="text-align:left">Пока нет завершённых прогнозов.</div>'}</div>`;
 }
