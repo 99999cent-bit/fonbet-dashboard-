@@ -167,6 +167,10 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
 .cf-row{margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .cf-btn{background:rgba(0,230,118,.15);color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer}
 .cf-btn.ghost{background:transparent;color:var(--muted);border-color:var(--border);font-weight:500}
+.tl{font-size:12px;color:#cfd8dc;margin:4px 0;line-height:1.5}
+.mon{font-size:11.5px;color:var(--accent);margin:2px 0 4px}
+details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summary{cursor:pointer}
+.why{font-size:12px;color:#b0bec5;margin-top:3px}
 </style>
 </head>
 <body>
@@ -250,6 +254,9 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
       <label>Ссылка на бэкенд Railway:</label>
       <input type="text" id="backendUrl" value="https://fonbet-dashboard-production.up.railway.app">
     </div>
+    <div class="d-title" style="margin-top:14px">Слежение за матчами</div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="wakeChk"> 📱 Не выключать экран, пока открыта страница</label>
+    <div class="hint" id="wakeNote" style="text-align:left">Результаты ставок проставляются, пока страница открыта и активна. Если экран гаснет или страница уходит в фон, браузер приостанавливает слежение.</div>
     <div class="d-title" style="margin-top:14px">Ключи Gemini API (основной + 10 запасных)</div>
     <div class="hint" style="text-align:left">Если ключ не сработал или на нём закончился лимит, программа сама перейдёт к следующему и запомнит рабочий: следующие запросы начнутся с него. Ключи хранятся только в этом браузере.</div>
     <div id="keyRows"></div>
@@ -609,6 +616,7 @@ function processData(data){
   }
   fresh.forEach(m => finishedStore.delete(m.id));
   updateTracking(fresh, !prevReal.length || fresh.length >= prevReal.length * 0.5);
+  startupDone = true; maybeResolve();
   renderStats();
   while (finishedStore.size > 150) finishedStore.delete(finishedStore.keys().next().value);
 
@@ -961,6 +969,7 @@ function openOnly(card){
 }
 
 function onContainerClick(e){
+  const sa = e.target.closest('[data-sact]'); if (sa){ resolveViaSearch(true); return; }
   const ca = e.target.closest('[data-cact]'); if (ca){ handleConfirm(ca); return; }
   const av = e.target.closest('[data-av]'); if (av){ anView = av.dataset.av; renderMatches(); return; }
   const hv = e.target.closest('[data-hv]'); if (hv){ histView = hv.dataset.hv; renderMatches(); return; }
@@ -1122,6 +1131,20 @@ function initSettings(){
   });
   $('keyCheckAll').addEventListener('click', checkAllKeys);
   $('backendUrl').addEventListener('change', () => { saveConfig(); loadOdds(); });
+  let wake = null;
+  const setWake = async on => {
+    try {
+      if (on){ wake = await navigator.wakeLock.request('screen'); localStorage.setItem('fb_wake', '1'); }
+      else { if (wake){ await wake.release(); wake = null; } localStorage.setItem('fb_wake', '0'); }
+    } catch (e){ $('wakeChk').checked = false; toast('Не удалось включить: ' + e.message); }
+  };
+  if (!navigator.wakeLock){ $('wakeChk').disabled = true; $('wakeNote').textContent = 'Этот браузер не поддерживает удержание экрана. Держите страницу открытой и экран включённым.'; }
+  else {
+    $('wakeChk').checked = localStorage.getItem('fb_wake') === '1';
+    if ($('wakeChk').checked) setWake(true);
+    $('wakeChk').addEventListener('change', () => setWake($('wakeChk').checked));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && $('wakeChk').checked && (!wake || wake.released)) setWake(true); });
+  }
 }
 
 async function loadModels(){
@@ -1457,7 +1480,7 @@ function initMatchModal(){
 
 /* ================= История, проверка результатов, аналитика ================= */
 let analyses = [], preds = [], exps = [], track = {}, histView = 'exp', histRes = 'all';
-const STATE_LBL = { won:'✅ Зашла', lost:'❌ Не зашла', void:'↩️ Возврат', unknown:'❓ Нужна отметка', pending:'⏳ Ожидает' };
+const STATE_LBL = { won:'✅ Зашла', lost:'❌ Не зашла', void:'↩️ Возврат', unknown:'⚠️ Итог не получен', pending:'⏳ Ожидает' };
 const uid = pfx => pfx + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 function loadStore(){
@@ -1490,7 +1513,7 @@ function touchTrack(m){
 }
 function makePred(m, o){
   touchTrack(m);
-  return { pid: uid('p'), src: o.src, mid: String(m.id), t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon,
+  return { pid: uid('p'), src: o.src, mid: String(m.id), sk: m.sportKey, ms: m.start || 0, t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon,
     market: o.market, sub: o.sub || '', risk: o.risk, odd: o.odd, desc: o.desc || '', reason: o.reason || '',
     at: Date.now(), state: o.key ? 'pending' : 'unknown', note: o.key ? '' : 'ставка не распознана — отметьте вручную' };
 }
@@ -1537,65 +1560,108 @@ function evalPred(p, t){
   });
   return sum > 0 ? 'won' : sum < 0 ? 'lost' : 'void';
 }
+/* Тоталы «больше» (и «меньше» при проигрыше) определяются ещё до конца матча: голы, карточки и угловые только прибавляются */
+function evalEarly(p, t){
+  const mm = String(p.market).match(/^(ТБ|ТМ)\(/); if (!mm) return null;
+  const r = evalPred(p, t);
+  if (mm[1] === 'ТБ' && r === 'won') return 'won';
+  if (mm[1] === 'ТМ' && r === 'lost') return 'lost';
+  return null;
+}
+function explainPred(p){
+  if (!p.final || p.state === 'pending' || p.state === 'unknown') return '';
+  const [a, b] = String(p.final).split(':').map(Number); if (isNaN(a) || isNaN(b)) return '';
+  const lbl = p.sub ? p.sub + ': ' : '', mm = String(p.market).match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/);
+  if (p.early) return `${lbl}условие выполнено уже при счёте ${p.final}`;
+  if (mm && (mm[1] === 'ТБ' || mm[1] === 'ТМ')) return `${lbl}итог ${p.final}, всего ${a + b} (линия ${mm[2]})`;
+  if (mm){ const h = parseFloat(String(mm[2]).replace(',', '.')); return `${lbl}итог ${p.final}; с форой ${mm[2]}: ${mm[1] === 'Ф1' ? +(a + h).toFixed(2) + ':' + b : a + ':' + +(b + h).toFixed(2)}`; }
+  return `${lbl}итог ${p.final}`;
+}
 function settleMatch(mid, how){
   const t = track[mid]; if (!t) return;
   const stale = how === 'gone' && (!t.seenLive || Date.now() - t.lastSeen > 15 * 60 * 1000);
   preds.filter(p => p.mid === mid && p.state === 'pending').forEach(p => {
-    if (stale){ p.state = 'unknown'; p.note = t.seenLive ? 'страница была закрыта в момент окончания — отметьте вручную' : 'матч не наблюдался в лайве — отметьте вручную'; }
+    if (stale){ p.state = 'unknown'; p.note = t.seenLive ? 'Страница была неактивна, когда матч закончился: итоговый счёт не получен' : 'Матч не наблюдался в лайве: итог не получен'; }
     else {
       p.state = evalPred(p, t);
       const sc = p.sub ? t.subs[normName(p.sub)] : t;
       if (sc && !isNaN(sc.a)) p.final = `${sc.a}:${sc.b}`;
-      if (p.state === 'unknown') p.note = 'нет данных для проверки — отметьте вручную';
+      if (p.state === 'unknown') p.note = 'Нет данных для проверки этой ставки';
     }
     p.settledAt = Date.now();
   });
+  analyses.filter(a => a.mid === mid && !a.ended).forEach(a => { a.ended = Date.now(); a.final = stale ? null : `${t.a}:${t.b}`; });
   delete track[mid];
 }
+function backfillMonitoring(byId){
+  analyses.forEach(A => {
+    if (A.ended) return;
+    if (!A.timeline) A.timeline = [{ t: A.at, min: '', score: A.score }];
+    const m = byId[A.mid]; if (!m || m.status === 'finished') return;
+    A.bets.forEach(b => {
+      if (b.pid && preds.some(p => p.pid === b.pid)) return;
+      const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason });
+      p.aid = A.aid; p.virtual = true; preds.push(p); b.pid = p.pid;
+    });
+  });
+}
 function updateTracking(fresh, healthy){
+  const byId = {}; fresh.forEach(m => byId[String(m.id)] = m);
+  backfillMonitoring(byId);
   const pend = new Set(preds.filter(p => p.state === 'pending').map(p => p.mid));
   Object.keys(track).forEach(k => { if (!pend.has(k)) delete track[k]; });
   if (!pend.size){ saveStore(); return; }
-  const byId = {}; fresh.forEach(m => byId[String(m.id)] = m);
   pend.forEach(mid => {
     const m = byId[mid];
     const t = track[mid] || (track[mid] = { a:0, b:0, subs:{}, seenLive:false, lastSeen:0, miss:0 });
     if (m){
       Object.assign(t, snap(m)); if (m.status === 'live') t.seenLive = true;
       t.lastSeen = Date.now(); t.miss = 0;
+      analyses.filter(a => a.mid === mid && !a.ended).forEach(a => {
+        const last = a.timeline[a.timeline.length - 1];
+        if (!last || last.score !== m.score){ a.timeline.push({ t: Date.now(), min: m.status === 'live' ? fmtTimer(m, false) : '', score: m.score }); if (a.timeline.length > 40) a.timeline.shift(); }
+      });
+      preds.filter(p => p.mid === mid && p.state === 'pending').forEach(p => {
+        const r = evalEarly(p, t); if (!r) return;
+        const sc = p.sub ? t.subs[normName(p.sub)] : t;
+        p.state = r; p.early = true; p.final = `${sc.a}:${sc.b}`; p.settledAt = Date.now();
+      });
       if (m.status === 'finished') settleMatch(mid, 'feed');
     } else if (healthy){
       t.miss = (t.miss || 0) + 1;
-      if (t.miss >= 2) settleMatch(mid, 'gone');
+      if (t.miss >= 2 || (!startupDone && fresh.length > 50 && Date.now() - t.lastSeen > 15 * 60 * 1000)) settleMatch(mid, 'gone');
     }
   });
   saveStore();
 }
 
 /* Анализ матча: сохраняется в «Анализ матча». Ставкой (в истории и аналитике) становится только после «Подтвердить» */
+function predOf(b){ return b && b.pid ? preds.find(x => x.pid === b.pid) : null; }
 function recordAnalysis(m){
   const es = pickEntries(m); if (!es.length) return null;
-  analyses = analyses.filter(a => !(a.mid === String(m.id) && !a.bets.some(b => b.pid)));
+  const old = analyses.filter(a => a.mid === String(m.id) && !a.ended && !a.bets.some(b => { const p = predOf(b); return p && !p.virtual; }));
+  const oldIds = new Set(old.map(a => a.aid));
+  analyses = analyses.filter(a => !oldIds.has(a.aid)); preds = preds.filter(p => !(p.virtual && oldIds.has(p.aid)));
   const r = aiResults[m.id];
   const A = { aid: uid('a'), mid: String(m.id), t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon, at: Date.now(), score: m.score,
-    summary: (r && r.data && r.data.summary) || '',
-    bets: es.map(e => {
-      const sb = e.sub >= 0 ? m.subs[e.sub] : null;
-      return { market: e.key || String(e.b.market || ''), key: e.key, sub: sb ? sb.name : '', risk: e.risk,
-        odd: e.key ? Number(sb ? sb.odds[e.key] : m.odds[e.key]) : (Number(e.b.odds) || 0), desc: betWho(m, e), reason: e.b.reason || '', pid: null };
-    }) };
-  analyses.push(A); saveStore();
+    summary: (r && r.data && r.data.summary) || '', bets: [], timeline: [{ t: Date.now(), min: m.status === 'live' ? fmtTimer(m, false) : '', score: m.score }], final: null, ended: null };
+  es.forEach(e => {
+    const sb = e.sub >= 0 ? m.subs[e.sub] : null;
+    const b = { market: e.key || String(e.b.market || ''), key: e.key, sub: sb ? sb.name : '', risk: e.risk,
+      odd: e.key ? Number(sb ? sb.odds[e.key] : m.odds[e.key]) : (Number(e.b.odds) || 0), desc: betWho(m, e), reason: e.b.reason || '', pid: null };
+    const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason });
+    p.aid = A.aid; p.virtual = true; preds.push(p); b.pid = p.pid; A.bets.push(b);
+  });
+  analyses.push(A); saveStore(); renderStats();
   return A;
 }
 function confirmBet(aid, i, quiet){
   const A = analyses.find(a => a.aid === aid); if (!A) return false;
-  const b = A.bets[i]; if (!b || (b.pid && preds.some(p => p.pid === b.pid))) return false;
-  const m = matchById[A.mid];
-  if (!m || m.status === 'finished'){ toast('Матч уже закончился или убран из линии: подтвердить ставку нельзя'); return false; }
-  const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason });
-  p.aid = aid; p.at = Date.now(); preds.push(p); b.pid = p.pid;
+  const b = A.bets[i], p = predOf(b); if (!b || !p || !p.virtual) return false;
+  if (p.state !== 'pending'){ toast('Матч уже сыгран или результат известен: подтвердить нельзя'); return false; }
+  p.virtual = false; p.at = Date.now();
   saveStore(); renderStats(); renderAll();
-  if (!quiet) toast('✅ Ставка подтверждена. Результат появится в «Мои экспрессы»');
+  if (!quiet) toast('✅ Ставка подтверждена. Слежу за матчем и сама отмечу результат');
   return true;
 }
 function confirmAll(aid){
@@ -1604,22 +1670,26 @@ function confirmAll(aid){
   if (n) toast(`✅ Подтверждено ставок: ${n}`);
 }
 function cancelBet(aid, i){
-  const A = analyses.find(a => a.aid === aid); const b = A && A.bets[i]; if (!b || !b.pid) return;
-  const p = preds.find(x => x.pid === b.pid);
-  if (p && p.state !== 'pending'){ toast('Результат уже известен, отменить нельзя'); return; }
-  preds = preds.filter(x => x.pid !== b.pid); b.pid = null;
-  saveStore(); renderStats(); renderAll();
+  const A = analyses.find(a => a.aid === aid); const p = A && predOf(A.bets[i]); if (!p || p.virtual) return;
+  if (p.state !== 'pending'){ toast('Результат уже известен, отменить нельзя'); return; }
+  p.virtual = true; saveStore(); renderStats(); renderAll();
+}
+function betStateHtml(A, i, b){
+  const p = predOf(b);
+  if (!p) return '';
+  if (!p.virtual) return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.state === 'pending' ? `<button class="cf-btn ghost" data-cact="cancel" data-aid="${esc(A.aid)}" data-i="${i}">Отменить</button>` : ''}</div>`;
+  if (p.state === 'pending') return `<div class="cf-row"><button class="cf-btn" data-cact="confirm" data-aid="${esc(A.aid)}" data-i="${i}">✅ Подтвердить ставку</button></div>`;
+  return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]} · без ставки</span></div>`;
 }
 function confirmCtl(m, i){
   const r = aiResults[m.id], A = r && r.aid ? analyses.find(a => a.aid === r.aid) : null;
   if (!A || !A.bets[i]) return '';
-  const b = A.bets[i], p = b.pid ? preds.find(x => x.pid === b.pid) : null;
-  if (p) return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.state === 'pending' ? `<button class="cf-btn ghost" data-cact="cancel" data-aid="${esc(A.aid)}" data-i="${i}">Отменить</button>` : ''}</div>`;
-  return `<div class="cf-row"><button class="cf-btn" data-cact="confirm" data-aid="${esc(A.aid)}" data-i="${i}">✅ Подтвердить ставку</button></div>`;
+  const b = A.bets[i], p = predOf(b), ex = p ? explainPred(p) : '';
+  return betStateHtml(A, i, b) + (ex ? `<div class="why">${esc(ex)}</div>` : '') + (p && p.note ? `<div class="hx-n">${esc(p.note)}</div>` : '');
 }
 function confirmAllCtl(m){
   const r = aiResults[m.id], A = r && r.aid ? analyses.find(a => a.aid === r.aid) : null;
-  if (!A || A.bets.length < 2 || A.bets.every(b => b.pid && preds.some(p => p.pid === b.pid))) return '';
+  if (!A || A.bets.length < 2 || !A.bets.some(b => { const p = predOf(b); return p && p.virtual && p.state === 'pending'; })) return '';
   return `<div class="cf-row"><button class="cf-btn" data-cact="all" data-aid="${esc(A.aid)}">✅ Подтвердить все ставки</button></div>`;
 }
 function handleConfirm(b){
@@ -1638,29 +1708,103 @@ function handleConfirm(b){
 let anView = 'all';
 function renderAnalyses(){
   const q = $('searchInput').value.trim().toLowerCase(), pr = readPeriod();
-  const pm = new Map(preds.map(p => [p.pid, p]));
-  const isConf = a => a.bets.some(b => b.pid && pm.has(b.pid));
+  const isConf = a => a.bets.some(b => { const p = predOf(b); return p && !p.virtual; });
   const list = analyses.filter(a => inPer(a.at, pr) && (!q || (a.t1 + ' ' + a.t2 + ' ' + a.league).toLowerCase().includes(q)));
   const shown = list.filter(a => anView === 'all' || (anView === 'conf' ? isConf(a) : !isConf(a))).slice().reverse();
-  let h = `<div class="ex-row">` + [['all', `Все (${list.length})`], ['new', `⏳ Не подтверждены (${list.filter(a => !isConf(a)).length})`], ['conf', `✅ Подтверждены (${list.filter(isConf).length})`]]
+  const singles = preds.filter(p => p.src === 'single' && inPer(p.at, pr));
+  let h = tallyHtml('Все прогнозы ИИ (включая неподтверждённые):', tally(singles.map(p => p.state))) + tallyHtml('Подтверждённые мной ставки:', tally(singles.filter(p => !p.virtual).map(p => p.state))) + breakdownHtml(singles);
+  h += `<div class="ex-row">` + [['all', `Все (${list.length})`], ['new', `Не подтверждены (${list.filter(a => !isConf(a)).length})`], ['conf', `✅ Подтверждены (${list.filter(isConf).length})`]]
     .map(([k, l]) => `<button data-av="${k}" class="${anView === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
-  h += `<div class="hint">Сюда попадают матчи, которые вы разбирали кнопкой «⚡ AI Анализ матча». Нажмите «Подтвердить», и ставка будет отслеживаться и попадёт в историю и аналитику, как будто вы её сделали.</div>`;
+  h += searchBar();
+  h += `<div class="hint">Программа сама следит за каждым разобранным матчем и сама проставляет результат ставок, даже если вы их не подтверждали (тогда они помечены «без ставки» и в вашу статистику не идут). «Подтвердить» означает, что вы поставили: такая ставка попадает в аналитику вверху.</div>`;
   if (!shown.length) return h + `<div class="status-msg">Анализов пока нет. Откройте любой матч и нажмите «⚡ AI Анализ матча».</div>`;
   shown.slice(0, 100).forEach(A => {
-    const unconf = A.bets.some(b => !(b.pid && pm.has(b.pid)));
+    const pending = A.bets.some(b => { const p = predOf(b); return p && p.state === 'pending'; });
+    const tl = (A.timeline || []).map(x => `${x.min ? x.min + ' ' : ''}<b>${esc(x.score)}</b>`).join(' → ');
     h += `<div class="hx"><div class="hx-head"><b>${A.icon || ''} ${esc(A.t1)} — ${esc(A.t2)}</b><span class="hx-sub" style="margin:0">${fmtDT(A.at)}</span></div>
-      <div class="hx-sub">${esc(A.league)} · разбор при счёте ${esc(A.score)} · сейчас: ${liveLine({ mid: A.mid })}</div>
-      ${A.summary ? `<div class="ai-sum">${esc(A.summary)}</div>` : ''}`;
+      <div class="hx-sub">${esc(A.league)} · сейчас: ${liveLine({ mid: A.mid, final: A.final })}</div>
+      ${pending ? '<div class="mon">👁 Слежу за матчем автоматически</div>' : ''}
+      ${A.summary ? `<div class="ai-sum">${esc(A.summary)}</div>` : ''}
+      <div class="tl">Ход матча: ${tl}${A.ended ? (A.final ? ` → итог <b>${esc(A.final)}</b> 🏁` : ' → итог не получен (страница была неактивна)') : ''}</div>`;
     A.bets.forEach((b, i) => {
-      const p = b.pid ? pm.get(b.pid) : null;
-      h += `<div class="bet ${b.risk}"><div class="bet-top"><b>${esc((b.sub ? b.sub + ': ' : '') + b.market)}</b>${b.desc ? `<span class="bet-who">→ ${esc(b.desc)}</span>` : ''}<span class="bet-odd">кэф ${esc(b.odd || '—')}</span><span class="bet-risk">${RISK[b.risk] || ''}</span></div><div class="bet-why">${esc(b.reason)}</div>`;
-      if (p) h += `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.state === 'pending' ? `<button class="cf-btn ghost" data-cact="cancel" data-aid="${esc(A.aid)}" data-i="${i}">Отменить</button>` : ''}</div>${manualBtns(p)}`;
-      else h += `<div class="cf-row"><button class="cf-btn" data-cact="confirm" data-aid="${esc(A.aid)}" data-i="${i}">✅ Подтвердить ставку</button></div>`;
-      h += `</div>`;
+      const p = predOf(b), ex = p ? explainPred(p) : '';
+      h += `<div class="bet ${b.risk}"><div class="bet-top"><b>${esc((b.sub ? b.sub + ': ' : '') + b.market)}</b>${b.desc ? `<span class="bet-who">→ ${esc(b.desc)}</span>` : ''}<span class="bet-odd">кэф ${esc(b.odd || '—')}</span><span class="bet-risk">${RISK[b.risk] || ''}</span></div><div class="bet-why">${esc(b.reason)}</div>${betStateHtml(A, i, b)}${ex ? `<div class="why">${esc(ex)}</div>` : ''}${p && p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${p && p.state !== 'pending' ? `<details class="man"><summary>Исправить вручную</summary>${manualBtns(p)}</details>` : ''}</div>`;
     });
+    const unconf = A.bets.some(b => { const p = predOf(b); return p && p.virtual && p.state === 'pending'; });
     h += `<div class="cf-row">${unconf && A.bets.length > 1 ? `<button class="cf-btn" data-cact="all" data-aid="${esc(A.aid)}">✅ Подтвердить все</button>` : ''}<button class="cf-btn ghost" data-cact="open" data-mid="${esc(A.mid)}">📂 Открыть матч</button><button class="cf-btn ghost" data-cact="del" data-aid="${esc(A.aid)}">🗑 Удалить</button></div></div>`;
   });
   return h;
+}
+
+/* ----- итоги матчей, закончившихся при закрытом приложении: ищем в интернете через Gemini (поиск Google) ----- */
+let startupDone = false, searchBusy = false, searchOff = false;
+const SEARCH_SPORTS = ['football', 'hockey', 'basket'];
+const sportOfPred = p => p.sk || ({ '⚽': 'football', '🏒': 'hockey', '🏀': 'basket' })[p.icon];
+function eligibleUnknown(force){
+  return preds.filter(p => p.state === 'unknown' && !p.sub && /^(П1|X|П2|1X|X2|12|Ф[12]\(|Т[БМ]\()/.test(String(p.market)) &&
+    SEARCH_SPORTS.includes(sportOfPred(p)) && (p.srchN || 0) < 4 && (force || !p.virtual));
+}
+function searchBar(){
+  const n = new Set(eligibleUnknown(true).map(p => p.mid)).size;
+  return n ? `<div class="cf-row"><button class="cf-btn" data-sact="search">🔎 Узнать итоги через интернет (матчей: ${n})</button></div>` : '';
+}
+function maybeResolve(){
+  if (eligibleUnknown(false).some(p => !p.srchAt || Date.now() - p.srchAt > 30 * 60 * 1000)) resolveViaSearch(false);
+}
+function shareWord(a, b){
+  const w = x => String(x || '').toLowerCase().split(/[^a-zа-яё0-9]+/).filter(t => t.length >= 4);
+  const A = w(a), B = w(b);
+  return A.some(t => B.some(u => u.slice(0, 4) === t.slice(0, 4)));
+}
+/* Принимаем ответ только если матч найден, закончен, счёт целый и команды совпали с нашими */
+function verifyFound(r, p){
+  if (!r || r.found !== true || r.finished !== true) return null;
+  let a = Number(r.score1), b = Number(r.score2);
+  if (!Number.isInteger(a) || !Number.isInteger(b) || a < 0 || b < 0) return null;
+  if (shareWord(r.team1, p.t1) || shareWord(r.team2, p.t2)) return { a, b };
+  if (shareWord(r.team1, p.t2) || shareWord(r.team2, p.t1)) return { a: b, b: a };
+  return null;
+}
+function applyFound(mid, a, b){
+  const t = { a, b, subs: {} };
+  preds.filter(p => p.mid === mid && p.state === 'unknown' && !p.sub).forEach(p => {
+    const st = evalPred(p, t); if (st === 'unknown') return;
+    p.state = st; p.final = `${a}:${b}`; p.via = 'search'; p.note = `🔎 Итог найден через поиск Google (Gemini): ${a}:${b}`; p.settledAt = Date.now();
+  });
+  analyses.filter(x => x.mid === mid && !x.final).forEach(x => { x.final = `${a}:${b}`; x.ended = x.ended || Date.now(); x.via = 'search'; });
+}
+async function resolveViaSearch(force){
+  if (searchBusy || searchOff) return;
+  if (!keyOrder().length || !$('modelSelect').value){ if (force) toast('Добавьте ключ Gemini в ⚙️ и выберите модель'); return; }
+  const todo = eligibleUnknown(force).filter(p => force || !p.srchAt || Date.now() - p.srchAt > 30 * 60 * 1000);
+  const mids = [...new Set(todo.map(p => p.mid))].slice(0, 6);
+  if (!mids.length){ if (force) toast('Нечего проверять'); return; }
+  searchBusy = true; let ok = 0;
+  try {
+    for (const mid of mids){
+      const ps = todo.filter(p => p.mid === mid), p0 = ps[0], sport = sportOfPred(p0);
+      const when = new Date(p0.ms ? p0.ms * 1000 : p0.at).toLocaleDateString('ru-RU', { day:'numeric', month:'long', year:'numeric' });
+      const prompt = `Найди в интернете (Google) итоговый результат уже сыгранного матча.\nВид спорта: ${sport === 'football' ? 'футбол' : sport === 'hockey' ? 'хоккей' : 'баскетбол'}. Турнир: ${p0.league}. Дата матча: ${when}.\nКоманда 1: ${p0.t1}. Команда 2: ${p0.t2}.\nВерни ТОЛЬКО JSON без пояснений: {"found":true или false,"finished":true или false,"team1":"название Команды 1 по-русски","team2":"название Команды 2 по-русски","score1":целое число,"score2":целое число,"source":"сайт"}.\nscore1 и score2 — счёт Команды 1 и Команды 2 ${sport === 'basket' ? 'по итогам матча, включая овертайм' : 'по итогам основного времени (без овертайма, дополнительного времени и пенальти)'}.\nЕсли матч не найден, не закончился или ты не уверен, верни {"found":false}. Ничего не выдумывай.`;
+      let res = null, stop = false;
+      try {
+        const { data } = await geminiFetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent($('modelSelect').value)}:generateContent`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], tools: [{ google_search: {} }] })
+        });
+        if (data.error){
+          if (/google_search|ground|tool/i.test(String(data.error.message))){ searchOff = true; stop = true; toast('Эта модель не поддерживает поиск Google. Выберите другую модель (flash) в списке.'); }
+        } else {
+          const cand = data.candidates && data.candidates[0];
+          res = parseBets((cand && cand.content && cand.content.parts ? cand.content.parts.map(x => x.text || '').join('') : '') || '');
+        }
+      } catch (err){ res = null; }
+      if (stop) break;
+      ps.forEach(p => { p.srchAt = Date.now(); p.srchN = (p.srchN || 0) + 1; });
+      const v = verifyFound(res, p0);
+      if (v){ applyFound(mid, v.a, v.b); ok++; }
+      else ps.forEach(p => { p.note = `Итог пока не найден в интернете (попытка ${p.srchN})`; });
+    }
+  } finally { searchBusy = false; saveStore(); renderStats(); renderAll(); }
+  if (force) toast(ok ? `🔎 Итоги найдены: ${ok}` : 'Итоги пока не найдены');
 }
 
 function expStatus(ex, pm){
@@ -1699,12 +1843,13 @@ function tallyHtml(label, c){
 }
 function renderStats(){
   const pr = readPeriod(), pm = new Map(preds.map(p => [p.pid, p]));
-  const cp = tally(preds.filter(p => inPer(p.at, pr)).map(p => p.state));
+  const cp = tally(preds.filter(p => p.src === 'single' && !p.virtual && inPer(p.at, pr)).map(p => p.state));
   const ce = tally(exps.filter(e => inPer(e.at, pr)).map(e => expStatus(e, pm)));
-  $('stBody').innerHTML = tallyHtml('Прогнозы (ставки):', cp) + tallyHtml('Экспрессы:', ce);
+  $('stBody').innerHTML = tallyHtml('Анализы матчей (подтверждённые):', cp) + tallyHtml('Экспрессы:', ce);
 }
 function initStats(){
   loadStore();
+  preds.forEach(p => { if (p.src === 'single' && !p.aid) p.virtual = true; });
   $('stPeriod').addEventListener('change', () => { const c = $('stPeriod').value === 'custom'; $('stFrom').style.display = c ? '' : 'none'; $('stTo').style.display = c ? '' : 'none'; renderStats(); renderMatches(); });
   ['stFrom', 'stTo'].forEach(id => $(id).addEventListener('input', () => { renderStats(); renderMatches(); }));
   renderStats();
@@ -1728,13 +1873,13 @@ function legHtml(p){
   return `<div class="hx-leg ${p.state}"><div class="hx-m">${p.icon || ''} ${esc(p.t1)} — ${esc(p.t2)}</div>
     <div class="hx-b"><b>${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b> → ${esc(p.desc)} · кэф ${esc(p.odd)} · ${RISK[p.risk] || ''}</div>
     <div class="hx-l">${liveLine(p)} <span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div>
-    ${p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${manualBtns(p)}</div>`;
+    ${p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}${p.state !== 'pending' ? `<details class="man"><summary>Исправить вручную</summary>${manualBtns(p)}</details>` : ''}</div>`;
 }
 function expCard(ex, pm, no){
   const legs = ex.legs.map(id => pm.get(id)).filter(Boolean), st = expStatus(ex, pm);
   const lost = legs.filter(l => l.state === 'lost');
   const odds = legs.filter(l => l.state !== 'void').reduce((a, l) => a * (Number(l.odd) || 1), 1);
-  const BADGE = { won:'✅ ЗАШЁЛ', lost:'❌ НЕ ЗАШЁЛ', pending:'⏳ В игре', unknown:'❓ Нужна отметка', void:'↩️ Возврат' };
+  const BADGE = { won:'✅ ЗАШЁЛ', lost:'❌ НЕ ЗАШЁЛ', pending:'⏳ В игре', unknown:'⚠️ Итог не получен', void:'↩️ Возврат' };
   return `<div class="hx ${st}"><div class="hx-head"><b>Экспресс #${no} · ${legs.length} событий · ${fmtDT(ex.at)}</b><span class="hx-badge">${BADGE[st]}</span></div>
     <div class="hx-sub">Общий кэф ≈ ${odds.toFixed(2)}${legs.filter(l => l.state === 'won').length ? ` · зашло ${legs.filter(l => l.state === 'won').length} из ${legs.length}` : ''}</div>
     ${lost.length ? `<div class="hx-lost">❌ Не зашло (${lost.length}): ${lost.map(l => esc(l.t1 + ' — ' + l.t2 + ' (' + l.market + ')')).join('; ')}</div>` : ''}
@@ -1752,19 +1897,13 @@ function renderHistory(){
   const pm = new Map(preds.map(p => [p.pid, p]));
   const hit = p => !q || (p.t1 + ' ' + p.t2 + ' ' + p.league).toLowerCase().includes(q);
   const exL = exps.filter(e => inPer(e.at, pr) && e.legs.map(id => pm.get(id)).filter(Boolean).some(hit));
-  const sgL = preds.filter(p => p.src === 'single' && inPer(p.at, pr) && hit(p));
   const resOk = st => histRes === 'all' || (histRes === 'pending' ? (st === 'pending' || st === 'unknown') : st === histRes);
-  let h = `<div class="ex-row"><button data-hv="exp" class="${histView === 'exp' ? 'active' : ''}">🎯 Экспрессы (${exL.length})</button><button data-hv="single" class="${histView === 'single' ? 'active' : ''}">🤖 Подтверждённые анализы (${sgL.length})</button></div>`;
-  h += `<div class="ex-row">` + [['all', 'Все'], ['won', '✅ Зашли'], ['lost', '❌ Не зашли'], ['pending', '⏳ Ожидают']].map(([k, l]) => `<button data-hr="${k}" class="${histRes === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
-  h += breakdownHtml(preds.filter(p => inPer(p.at, pr)));
-  h += `<div class="hint">Период выбирается в блоке «Аналитика» вверху страницы. Результаты определяются автоматически, пока страница открыта; сомнительные можно отметить вручную.</div>`;
-  if (histView === 'exp'){
-    const list = exL.filter(e => resOk(expStatus(e, pm))).slice().reverse();
-    h += list.length ? list.slice(0, 100).map(e => expCard(e, pm, exps.indexOf(e) + 1)).join('') : `<div class="status-msg">Экспрессов нет. Соберите экспресс во вкладке «🎯 Экспресс», он сохранится здесь.</div>`;
-  } else {
-    const list = sgL.filter(p => resOk(p.state)).slice().reverse();
-    h += list.length ? list.slice(0, 150).map(p => `<div class="hx ${p.state}"><div class="hx-sub">${fmtDT(p.at)} · ставка из анализа матча</div>${legHtml(p)}<button class="hx-del" data-hact="delpred" data-pid="${esc(p.pid)}">🗑 Удалить</button></div>`).join('') : `<div class="status-msg">Подтверждённых ставок из анализа нет. Подтвердите ставку во вкладке «🔍 Анализ матча».</div>`;
-  }
+  let h = `<div class="ex-row">` + [['all', `Все (${exL.length})`], ['won', '✅ Зашли'], ['lost', '❌ Не зашли'], ['pending', '⏳ Ожидают']].map(([k, l]) => `<button data-hr="${k}" class="${histRes === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
+  h += breakdownHtml(preds.filter(p => p.src === 'express' && inPer(p.at, pr)));
+  h += searchBar();
+  h += `<div class="hint">Здесь только экспрессы. Разборы отдельных матчей находятся во вкладке «🔍 Анализ матча». Период выбирается в блоке «Аналитика» вверху. Результаты проставляются автоматически.</div>`;
+  const list = exL.filter(e => resOk(expStatus(e, pm))).slice().reverse();
+  h += list.length ? list.slice(0, 100).map(e => expCard(e, pm, exps.indexOf(e) + 1)).join('') : `<div class="status-msg">Экспрессов нет. Соберите экспресс во вкладке «🎯 Экспресс», он сохранится здесь.</div>`;
   return h;
 }
 function handleHistAct(b){
