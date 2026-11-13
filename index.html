@@ -558,6 +558,15 @@ function updateDiag(data, fresh){
     `Поля события: ${Object.keys(ev1).join(', ')}`,
     `Поля eventMisc: ${Object.keys((data.eventMiscs || [])[0] || {}).join(', ')}`
   ];
+  const ids = {}, empt = {};
+  const bump = (o, k) => { o[k] = (o[k] || 0) + 1; };
+  fresh.forEach(m => {
+    m.extra.forEach(e => bump(ids, e.label.split(' ')[0]));
+    m.subs.forEach(sb => { sb.extra.forEach(e => bump(ids, e.label.split(' ')[0])); if (!Object.keys(sb.odds).length && sb.extra.length) bump(empt, sb.name); });
+  });
+  const top = o => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, v]) => `${k}×${v}`).join(', ') || '—';
+  out.push('Нераспознанные ID коэффициентов (топ): ' + top(ids));
+  out.push('Доп. рынки, где все коэффициенты нераспознаны: ' + top(empt));
   $('diagOut').textContent = out.join('\n');
 }
 
@@ -802,6 +811,8 @@ function renderDetails(m){
   const hasFocus = mainG.size > 0 || Object.keys(subG).length > 0;
   const focus = hasFocus && !showAllMk.has(String(m.id));
   let h = '';
+  const unres = pickEntries(m).filter(e => !e.key);
+  if (unres.length) h += mkBlock(m.id + '|unres', '⚠️ Ставки без таблицы', unres.map(e => `<div class="bet ${e.risk}"><div class="bet-top"><b>${esc(e.b.market || '')}</b><span class="bet-odd">${e.b.odds ? 'кэф ' + esc(e.b.odds) : ''}</span><span class="bet-risk">${RISK[e.risk]}</span></div><div class="bet-why">Рынок не удалось сопоставить с таблицами коэффициентов. Результат отметьте вручную во вкладке «Мои экспрессы».</div></div>`).join(''), false);
 
   currentPicks = pickMap(m);
   const groups = marketTables(m.odds, m.oddsDir);
@@ -814,7 +825,8 @@ function renderDetails(m){
     currentPicks = subPickMap(m, i);
     const sg = marketTables(sb.odds, {}).filter(g => !focus || subG[i].has(g.title));
     currentPicks = {};
-    const body = sg.length ? sg.map(g => `<div class="mk-sub">${esc(g.title)}</div>${g.html}`).join('') : '<span class="log t">Нет коэффициентов</span>';
+    const exHtml = (!focus && sb.extra.length) ? `<div class="mk-sub">Нераспознанные коэффициенты (ID)</div><div class="chips">` + sb.extra.slice(0, 30).map(e => chip(e.label, e.v)).join('') + `</div>` : '';
+    const body = (sg.length ? sg.map(g => `<div class="mk-sub">${esc(g.title)}</div>${g.html}`).join('') : '') + exHtml || '<span class="log t">Нет коэффициентов</span>';
     h += mkBlock(m.id + '|s' + i, sb.name + (sb.score ? ` (${sb.score})` : ''), body, false);
   });
 
@@ -1078,13 +1090,27 @@ const resolveKey = (m, market) => resolveKeyIn(m.odds, market);
 const normName = x => String(x || '').toLowerCase().replace(/[^a-zа-яё0-9]/g, '');
 /* Ставка может быть из основных коэффициентов («П1») или из доп. рынка («желтые карты: П1») */
 function resolvePick(m, market){
-  const str = String(market || ''), k = resolveKey(m, str);
+  const str = String(market || '').replace(/[(\[]\s*(?:счёт\s*)?\d+\s*[:\-]\s*\d+\s*[)\]]/gi, '').replace(/\s+/g, ' ').trim();
+  const k = resolveKey(m, str);
   if (k) return { key: k, sub: -1 };
+  const subsIdx = m.subs.map((sb, i) => ({ sb, i, n: normName(sb.name) })).filter(o => o.n);
+  const tryBet = (o, bet) => { const sk = resolveKeyIn(o.sb.odds, bet); return sk ? { key: sk, sub: o.i } : null; };
   const idx = str.indexOf(':');
   if (idx > 0){
-    const nm = normName(str.slice(0, idx));
-    const si = m.subs.findIndex(sb => { const n = normName(sb.name); return n && nm && (n === nm || n.includes(nm) || nm.includes(n)); });
-    if (si >= 0){ const sk = resolveKeyIn(m.subs[si].odds, str.slice(idx + 1)); if (sk) return { key: sk, sub: si }; }
+    const nm = normName(str.slice(0, idx)), bet = str.slice(idx + 1);
+    if (nm){
+      const cands = subsIdx.filter(o => o.n === nm).concat(subsIdx.filter(o => o.n !== nm && (o.n.includes(nm) || nm.includes(o.n))));
+      for (const o of cands){ const r = tryBet(o, bet); if (r) return r; }
+    }
+  }
+  // без двоеточия: «1-й тайм ТБ(0.5)»
+  const low = str.toLowerCase();
+  for (const o of subsIdx.slice().sort((x, y) => y.sb.name.length - x.sb.name.length)){
+    const at = low.indexOf(o.sb.name.toLowerCase());
+    if (at >= 0){
+      const rest = (str.slice(0, at) + ' ' + str.slice(at + o.sb.name.length)).replace(/^[\s:,\-–—]+|[\s:,\-–—]+$/g, '');
+      const r = tryBet(o, rest); if (r) return r;
+    }
   }
   return { key: null, sub: -1 };
 }
@@ -1150,9 +1176,9 @@ async function analyzeSingleMatch(id, force){
   const cur = aiResults[id];
   if (cur && (cur.state === 'loading' || (cur.state === 'done' && !force))) return;
   aiResults[id] = { state:'loading' }; renderAll();
-  const subs = m.subs.map(sb => `${sb.name}${sb.score ? ' (' + sb.score + ')' : ''}: ${JSON.stringify(sb.odds)}`).join('\n');
+  const subs = m.subs.filter(sb => Object.keys(sb.odds).length).map(sb => `${sb.name}: ${JSON.stringify(sb.odds)}${sb.score ? '; текущий счёт этого рынка ' + sb.score : ''}`).join('\n');
   const log = (matchLog[m.id] || []).map(l => `${clock(l.t)} ${l.text}`).join('\n');
-  const prompt = `Проанализируй матч.\nТурнир: ${m.league}\nСпорт: ${m.sport}\nМатч: ${m.team1} — ${m.team2}\nСтатус: ${m.status}\nСчет: ${m.score} (${fmtTimer(m, true)})\nКоэффициенты: ${JSON.stringify(m.odds)}\n${subs ? 'Доп. рынки:\n' + subs + '\n' : ''}${log ? 'События:\n' + log + '\n' : ''}\nОтветь ТОЛЬКО JSON без пояснений: {"summary":"1-2 предложения о ситуации в матче","bets":[{"market":"П1 или ТБ(2.5) из основных коэффициентов; для доп. рынка формат: название рынка из списка доп. рынков, двоеточие, ставка (например желтые карты: П1)","odds":число,"risk":"low|medium|high","reason":"кратко почему"}]}. Дай от 1 до 3 ставок. risk: low — надёжная, medium — средний риск, high — рискованная. В reason называй команды по названию, а не П1/П2. Русский язык.`;
+  const prompt = `Проанализируй матч.\nТурнир: ${m.league}\nСпорт: ${m.sport}\nМатч: ${m.team1} — ${m.team2}\nСтатус: ${m.status}\nСчет: ${m.score} (${fmtTimer(m, true)})\nКоэффициенты: ${JSON.stringify(m.odds)}\n${subs ? 'Доп. рынки:\n' + subs + '\n' : ''}${log ? 'События:\n' + log + '\n' : ''}\nОтветь ТОЛЬКО JSON без пояснений: {"summary":"1-2 предложения о ситуации в матче","bets":[{"market":"П1 или ТБ(2.5) из основных коэффициентов; для доп. рынка формат: название рынка из списка доп. рынков, двоеточие, ставка (например желтые карты: П1), название рынка без счёта в скобках","odds":число,"risk":"low|medium|high","reason":"кратко почему"}]}. Дай от 1 до 3 ставок. risk: low — надёжная, medium — средний риск, high — рискованная. В reason называй команды по названию, а не П1/П2. Русский язык.`;
   try {
     const raw = await geminiRequest(prompt, true);
     aiResults[id] = { state:'done', raw, data: parseBets(raw), at: Date.now(), score: m.score };
