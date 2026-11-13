@@ -918,6 +918,13 @@ function mkBlock(key, title, html, def){
   return `<div class="mk"><div class="mk-head" data-mk="${esc(key)}"><span>${esc(title)}</span><span>${closed ? '▸' : '▾'}</span></div><div class="mk-body ${closed ? 'shut' : ''}">${html}</div></div>`;
 }
 
+function myBetsBox(m){
+  const mine = preds.filter(p => p.src === 'single' && !p.virtual && p.mid === String(m.id));
+  if (!mine.length) return '';
+  return `<div class="ai-box"><div class="ai-legend">⭐ Мои ставки на этот матч (слежу автоматически)</div>` + mine.map(p =>
+    `<div class="bet ${p.risk}"><div class="bet-top"><b>${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b><span class="bet-who">→ ${esc(p.desc)}</span><span class="bet-odd">кэф ${esc(p.odd)}</span></div><div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div></div>`).join('') + `</div>`;
+}
+
 function renderDetails(m){
   const es = pickEntries(m).filter(e => e.key);
   const mainG = new Set(), subG = {};
@@ -959,7 +966,7 @@ function renderDetails(m){
     h += mkBlock(m.id + '|log', 'История за сессию', `<div class="log">` + (log.length ? log.slice().reverse().map(l => `<span class="t">${clock(l.t)}</span> ${esc(l.text)}`).join('<br>') : '<span class="t">Изменений пока не было</span>') + `</div>`, true);
   }
   if (hasFocus) h += focus ? `<button class="btn-more" data-act="allmk">📋 Показать все рынки</button>` : `<button class="btn-more" data-act="focusmk">⬆️ Только рынки из прогноза</button>`;
-  return aiBox(m) + h;
+  return myBetsBox(m) + aiBox(m) + h;
 }
 
 function openOnly(card){
@@ -1677,7 +1684,7 @@ function cancelBet(aid, i){
 function betStateHtml(A, i, b){
   const p = predOf(b);
   if (!p) return '';
-  if (!p.virtual) return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.state === 'pending' ? `<button class="cf-btn ghost" data-cact="cancel" data-aid="${esc(A.aid)}" data-i="${i}">Отменить</button>` : ''}</div>`;
+  if (!p.virtual) return `<div class="cf-row"><span class="hx-st ${p.state}">⭐ ${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.state === 'pending' ? `<button class="cf-btn ghost" data-cact="cancel" data-aid="${esc(A.aid)}" data-i="${i}">Отменить</button>` : ''}</div>`;
   if (p.state === 'pending') return `<div class="cf-row"><button class="cf-btn" data-cact="confirm" data-aid="${esc(A.aid)}" data-i="${i}">✅ Подтвердить ставку</button></div>`;
   return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]} · без ставки</span></div>`;
 }
@@ -1706,33 +1713,45 @@ function handleConfirm(b){
 
 /* ----- вкладка «Анализ матча» ----- */
 let anView = 'all';
+const isMine = b => { const p = predOf(b); return !!p && !p.virtual; };
+function analysisBetHtml(A, b, i){
+  const p = predOf(b), ex = p ? explainPred(p) : '';
+  return `<div class="bet ${b.risk}"><div class="bet-top"><b>${esc((b.sub ? b.sub + ': ' : '') + b.market)}</b>${b.desc ? `<span class="bet-who">→ ${esc(b.desc)}</span>` : ''}<span class="bet-odd">кэф ${esc(b.odd || '—')}</span><span class="bet-risk">${RISK[b.risk] || ''}</span></div><div class="bet-why">${esc(b.reason)}</div>${betStateHtml(A, i, b)}${ex ? `<div class="why">${esc(ex)}</div>` : ''}${p && p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${p && p.state !== 'pending' ? `<details class="man"><summary>Исправить вручную</summary>${manualBtns(p)}</details>` : ''}</div>`;
+}
+/* Если в разборе есть подтверждённые ставки, показываем только их; остальные прогнозы ИИ свёрнуты */
+function analysisCard(A){
+  const all = A.bets.map((b, i) => ({ b, i })), mine = all.filter(x => isMine(x.b)), hasMine = mine.length > 0;
+  const rows = hasMine ? mine : all, others = hasMine ? all.filter(x => !isMine(x.b)) : [];
+  const pending = rows.some(x => { const p = predOf(x.b); return p && p.state === 'pending'; });
+  const tl = (A.timeline || []).map(x => `${x.min ? x.min + ' ' : ''}<b>${esc(x.score)}</b>`).join(' → ');
+  let h = `<div class="hx"><div class="hx-head"><b>${A.icon || ''} ${esc(A.t1)} — ${esc(A.t2)}</b><span class="hx-sub" style="margin:0">${hasMine ? `⭐ Мои ставки: ${mine.length} · ` : ''}${fmtDT(A.at)}</span></div>
+    <div class="hx-sub">${esc(A.league)} · сейчас: ${liveLine({ mid: A.mid, final: A.final })}</div>
+    ${pending ? '<div class="mon">👁 Слежу за матчем автоматически</div>' : ''}
+    ${!hasMine && A.summary ? `<div class="ai-sum">${esc(A.summary)}</div>` : ''}
+    <div class="tl">Ход матча: ${tl}${A.ended ? (A.final ? ` → итог <b>${esc(A.final)}</b> 🏁` : ' → итог не получен') : ''}</div>`;
+  rows.forEach(x => { h += analysisBetHtml(A, x.b, x.i); });
+  if (others.length) h += `<details class="man"><summary>Другие прогнозы ИИ в этом разборе (${others.length}): не отслеживаются как мои ставки</summary>${others.map(x => analysisBetHtml(A, x.b, x.i)).join('')}</details>`;
+  const unconf = !hasMine && A.bets.some(b => { const p = predOf(b); return p && p.virtual && p.state === 'pending'; });
+  h += `<div class="cf-row">${unconf && A.bets.length > 1 ? `<button class="cf-btn" data-cact="all" data-aid="${esc(A.aid)}">✅ Подтвердить все</button>` : ''}<button class="cf-btn ghost" data-cact="open" data-mid="${esc(A.mid)}">📂 Открыть матч</button><button class="cf-btn ghost" data-cact="del" data-aid="${esc(A.aid)}">🗑 Удалить</button></div></div>`;
+  return h;
+}
 function renderAnalyses(){
   const q = $('searchInput').value.trim().toLowerCase(), pr = readPeriod();
-  const isConf = a => a.bets.some(b => { const p = predOf(b); return p && !p.virtual; });
   const list = analyses.filter(a => inPer(a.at, pr) && (!q || (a.t1 + ' ' + a.t2 + ' ' + a.league).toLowerCase().includes(q)));
-  const shown = list.filter(a => anView === 'all' || (anView === 'conf' ? isConf(a) : !isConf(a))).slice().reverse();
+  const conf = list.filter(a => a.bets.some(isMine)).reverse(), fresh = list.filter(a => !a.bets.some(isMine)).reverse();
   const singles = preds.filter(p => p.src === 'single' && inPer(p.at, pr));
-  let h = tallyHtml('Все прогнозы ИИ (включая неподтверждённые):', tally(singles.map(p => p.state))) + tallyHtml('Подтверждённые мной ставки:', tally(singles.filter(p => !p.virtual).map(p => p.state))) + breakdownHtml(singles);
-  h += `<div class="ex-row">` + [['all', `Все (${list.length})`], ['new', `Не подтверждены (${list.filter(a => !isConf(a)).length})`], ['conf', `✅ Подтверждены (${list.filter(isConf).length})`]]
+  let h = tallyHtml('Мои ставки (подтверждённые):', tally(singles.filter(p => !p.virtual).map(p => p.state))) + tallyHtml('Все прогнозы ИИ (включая неподтверждённые):', tally(singles.map(p => p.state))) + breakdownHtml(singles);
+  h += `<div class="ex-row">` + [['all', `Все (${list.length})`], ['conf', `⭐ Мои ставки (${conf.length})`], ['new', `Не подтверждены (${fresh.length})`]]
     .map(([k, l]) => `<button data-av="${k}" class="${anView === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
   h += searchBar();
-  h += `<div class="hint">Программа сама следит за каждым разобранным матчем и сама проставляет результат ставок, даже если вы их не подтверждали (тогда они помечены «без ставки» и в вашу статистику не идут). «Подтвердить» означает, что вы поставили: такая ставка попадает в аналитику вверху.</div>`;
-  if (!shown.length) return h + `<div class="status-msg">Анализов пока нет. Откройте любой матч и нажмите «⚡ AI Анализ матча».</div>`;
-  shown.slice(0, 100).forEach(A => {
-    const pending = A.bets.some(b => { const p = predOf(b); return p && p.state === 'pending'; });
-    const tl = (A.timeline || []).map(x => `${x.min ? x.min + ' ' : ''}<b>${esc(x.score)}</b>`).join(' → ');
-    h += `<div class="hx"><div class="hx-head"><b>${A.icon || ''} ${esc(A.t1)} — ${esc(A.t2)}</b><span class="hx-sub" style="margin:0">${fmtDT(A.at)}</span></div>
-      <div class="hx-sub">${esc(A.league)} · сейчас: ${liveLine({ mid: A.mid, final: A.final })}</div>
-      ${pending ? '<div class="mon">👁 Слежу за матчем автоматически</div>' : ''}
-      ${A.summary ? `<div class="ai-sum">${esc(A.summary)}</div>` : ''}
-      <div class="tl">Ход матча: ${tl}${A.ended ? (A.final ? ` → итог <b>${esc(A.final)}</b> 🏁` : ' → итог не получен (страница была неактивна)') : ''}</div>`;
-    A.bets.forEach((b, i) => {
-      const p = predOf(b), ex = p ? explainPred(p) : '';
-      h += `<div class="bet ${b.risk}"><div class="bet-top"><b>${esc((b.sub ? b.sub + ': ' : '') + b.market)}</b>${b.desc ? `<span class="bet-who">→ ${esc(b.desc)}</span>` : ''}<span class="bet-odd">кэф ${esc(b.odd || '—')}</span><span class="bet-risk">${RISK[b.risk] || ''}</span></div><div class="bet-why">${esc(b.reason)}</div>${betStateHtml(A, i, b)}${ex ? `<div class="why">${esc(ex)}</div>` : ''}${p && p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${p && p.state !== 'pending' ? `<details class="man"><summary>Исправить вручную</summary>${manualBtns(p)}</details>` : ''}</div>`;
-    });
-    const unconf = A.bets.some(b => { const p = predOf(b); return p && p.virtual && p.state === 'pending'; });
-    h += `<div class="cf-row">${unconf && A.bets.length > 1 ? `<button class="cf-btn" data-cact="all" data-aid="${esc(A.aid)}">✅ Подтвердить все</button>` : ''}<button class="cf-btn ghost" data-cact="open" data-mid="${esc(A.mid)}">📂 Открыть матч</button><button class="cf-btn ghost" data-cact="del" data-aid="${esc(A.aid)}">🗑 Удалить</button></div></div>`;
-  });
+  h += `<div class="hint">Нажали «Подтвердить»: такая ставка попадает в «⭐ Мои ставки», и программа сама следит за матчем и проставляет результат. Остальные прогнозы ИИ в этом разборе не отслеживаются как ваши ставки.</div>`;
+  if (!list.length) return h + `<div class="status-msg">Анализов пока нет. Откройте любой матч и нажмите «⚡ AI Анализ матча».</div>`;
+  if (anView !== 'new'){
+    h += `<div class="top-sec">⭐ Мои ставки (${conf.length})</div>` + (conf.length ? conf.slice(0, 100).map(analysisCard).join('') : `<div class="status-msg">Пока нет подтверждённых ставок.</div>`);
+  }
+  if (anView !== 'conf'){
+    h += `<div class="top-sec">🤖 Разборы без подтверждения (${fresh.length})</div>` + (fresh.length ? fresh.slice(0, 100).map(analysisCard).join('') : `<div class="status-msg">Нет.</div>`);
+  }
   return h;
 }
 
