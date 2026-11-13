@@ -428,6 +428,7 @@ function buildMatches(data){
   });
   const subEventsMap = {};
   const subParent = {};
+  const blockMap = {}; (data.eventBlocks || []).forEach(b => { if (b && b.eventId !== undefined) blockMap[b.eventId] = b.state; });
   data.events.forEach(ev => { if (ev.level > 1 && ev.parentId){ (subEventsMap[ev.parentId] = subEventsMap[ev.parentId] || []).push(ev); subParent[ev.id] = ev.parentId; } });
 
   const fresh = [], nowSec = Math.floor(Date.now() / 1000), fetchedAt = Date.now();
@@ -458,11 +459,11 @@ function buildMatches(data){
     });
 
     fresh.push({
-      idx: fresh.length, sortOrder: String(ev.sortOrder || ''), id: ev.id, team1: ev.team1 || 'Команда 1', team2: ev.team2 || 'Команда 2',
+      idx: fresh.length, sortOrder: String(ev.sortOrder || ''), blocked: blockMap[ev.id] === 'blocked', id: ev.id, team1: ev.team1 || 'Команда 1', team2: ev.team2 || 'Команда 2',
       league, sport: sportName, sportKey: grp.key, sportIcon: grp.icon, sportCategory: sportName.toLowerCase(), tier: leagueTier(league),
       status, start, place: ev.place || '',
       score: `${s1} : ${s2}`, comment: misc.comment || '',
-      timerSeconds: misc.timerSeconds ?? null, timerDir: misc.timerDirection ?? 1, timerAt: fetchedAt,
+      timerSeconds: misc.timerSeconds ?? null, timerDir: misc.timerDirection ?? 1, timerAt: (Number(misc.timerUpdateTimestampMsec) > Date.now() - 3 * 3600e3 && Number(misc.timerUpdateTimestampMsec) < Date.now() + 60e3) ? Number(misc.timerUpdateTimestampMsec) : fetchedAt,
       odds: pf.main, extra: pf.extra, subs, oddsDir: {}, scoreChanged: false
     });
   });
@@ -532,27 +533,41 @@ function pushFeed(m, oldScore){
   feedItems = feedItems.slice(0, 8); renderFeed();
 }
 
-function topIdsFrom(te){
-  const out = [];
-  const push = v => {
-    if (v === null || v === undefined) return;
-    if (typeof v === 'number' || typeof v === 'string') out.push(String(v));
-    else if (Array.isArray(v)) v.forEach(push);
-    else if (typeof v === 'object'){
-      const id = v.id ?? v.eventId ?? v.e ?? v.event;
-      if (id !== undefined) push(id); else Object.values(v).forEach(x => { if (Array.isArray(x) || typeof x === 'number') push(x); });
-    }
-  };
-  push(te); return out;
+let sportTop = {}, topInfo = '';
+function collectLists(v, path, out, depth){
+  if (Array.isArray(v)){
+    const idOf = x => (x && typeof x === 'object') ? (x.id ?? x.eventId) : x;
+    if (v.length && v.every(x => { const i = idOf(x); return i !== undefined && i !== null && /^\d+$/.test(String(i)); })){ out.push({ path, ids: v.map(x => String(idOf(x))) }); return; }
+    v.forEach((x, i) => collectLists(x, path + '[' + i + ']', out, depth + 1));
+  } else if (v && typeof v === 'object' && depth < 4){
+    Object.entries(v).forEach(([k, x]) => collectLists(x, path ? path + '.' + k : k, out, depth + 1));
+  }
 }
 function setTop(data, fresh){
-  const ids = new Set(fresh.map(m => String(m.id))), seen = new Set();
-  topOrder = [];
-  topIdsFrom(data.topEvents).forEach(id => {
-    let mid = ids.has(id) ? id : (fresh.subParent && fresh.subParent[id] !== undefined ? String(fresh.subParent[id]) : null);
-    if (mid && ids.has(mid) && !seen.has(mid)){ seen.add(mid); topOrder.push(mid); }
+  const byId = new Map(fresh.map(m => [String(m.id), m]));
+  const toMatch = id => { id = String(id); if (byId.has(id)) return id; const par = fresh.subParent && fresh.subParent[id]; return par !== undefined && byId.has(String(par)) ? String(par) : null; };
+  const lists = []; collectLists(data.topEvents, '', lists, 0);
+  const res = lists.map(l => ({ path: l.path, raw: l.ids.length, mids: [...new Set(l.ids.map(toMatch).filter(Boolean))] }));
+  topInfo = res.map(l => `${l.path || '(корень)'}[${l.raw}→${l.mids.length}]`).join(', ') || 'списков нет';
+  const main = res.find(l => l.path === 'top');
+  const live = res.filter(l => /live/i.test(l.path) && l !== main);
+  const others = res.filter(l => l !== main && !live.includes(l));
+  const dedupe = arr => [...new Set(arr)];
+  const known = !!main || live.length > 0;
+  topOrder = known ? dedupe([...(main ? main.mids : []), ...live.flatMap(l => l.mids)]) : dedupe(res.flatMap(l => l.mids));
+  sportTop = {};
+  (known ? others : []).forEach(l => {
+    const cnt = {}; l.mids.forEach(id => { const k = byId.get(id).sportKey; cnt[k] = (cnt[k] || 0) + 1; });
+    const best = Object.entries(cnt).sort((x, y) => y[1] - x[1])[0]; if (!best) return;
+    sportTop[best[0]] = dedupe([...(sportTop[best[0]] || []), ...l.mids]);
   });
-  topSet = new Set(topOrder); topActive = topOrder.length > 0;
+  topSet = new Set([...topOrder, ...Object.values(sportTop).flat()]);
+  topActive = topOrder.length > 0;
+}
+function effectiveTopOrder(sportKey){
+  if (!sportKey || sportKey === 'all') return topOrder;
+  const own = topOrder.filter(id => matchById[id] && matchById[id].sportKey === sportKey);
+  return [...new Set([...(sportTop[sportKey] || []), ...own])];
 }
 
 function processData(data){
@@ -621,7 +636,9 @@ function updateDiag(data, fresh){
   });
   const top = o => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([k, v]) => `${k}×${v}`).join(', ') || '—';
   const smp = v => { try { return JSON.stringify(v).slice(0, 160); } catch (e){ return '?'; } };
-  out.push(`topEvents: ${Array.isArray(data.topEvents) ? data.topEvents.length + ' шт.' : typeof data.topEvents}, распознано матчей: ${topOrder.length}; пример: ${smp(Array.isArray(data.topEvents) ? data.topEvents[0] : data.topEvents)}`);
+  out.push('topEvents (списки, номера→матчей): ' + topInfo + '; основной список: ' + topOrder.length + '; по видам спорта: ' + (Object.entries(sportTop).map(([k, v]) => k + '×' + v.length).join(', ') || '—'));
+  const bl = {}; (data.eventBlocks || []).forEach(b => { bl[b.state] = (bl[b.state] || 0) + 1; });
+  out.push('eventBlocks по статусам: ' + JSON.stringify(bl));
   out.push('topParameters: ' + smp(data.topParameters));
   out.push('eventBlocks[0]: ' + smp((data.eventBlocks || [])[0]));
   out.push('liveEventInfos[0]: ' + smp((data.liveEventInfos || [])[0]));
@@ -679,10 +696,10 @@ function cardHtml(m, showLeague){
     <div class="match-card" data-id="${esc(m.id)}">
       <div class="match-head">
         ${showLeague ? `<div class="lg-tag">${m.sportIcon} ${esc(m.league)}</div>` : ''}
-        <div class="match-top">${badge}<span>ID: ${esc(m.id)} ▾</span></div>
+        <div class="match-top">${badge}${m.blocked ? '<span class="status-badge status-finished">🔒 приём ставок закрыт</span>' : ''}<span>ID: ${esc(m.id)} ▾</span></div>
         <div class="teams-row">
           <div class="teams-names"><div>${esc(m.team1)}</div><div>${esc(m.team2)}</div></div>
-          <div class="score-box ${m.scoreChanged ? 'changed' : ''}"><div class="score-main">${esc(m.score)}</div><div class="score-sub">${esc(m.comment)}</div></div>
+          <div class="score-box ${m.scoreChanged ? 'changed' : ''}"><div class="score-main">${esc(m.status === 'upcoming' ? '– : –' : m.score)}</div><div class="score-sub">${esc(m.comment)}</div></div>
         </div>
         ${oddsHtml}${pickLine(m)}
       </div>
@@ -702,8 +719,8 @@ function topList(arr){
 
 function renderTop(base){
   if (!topActive) return renderTopHeuristic(base);
-  const pos = new Map(topOrder.map((id, i) => [id, i]));
-  const list = base.filter(m => topSet.has(String(m.id)) && m.status !== 'finished').sort((a, b) => pos.get(String(a.id)) - pos.get(String(b.id)));
+  const pos = new Map(effectiveTopOrder(currentSport).map((id, i) => [id, i]));
+  const list = base.filter(m => pos.has(String(m.id)) && m.status !== 'finished').sort((a, b) => pos.get(String(a.id)) - pos.get(String(b.id)));
   if (!list.length) return `<div class="status-msg">Топ-матчей Fonbet по выбранным фильтрам нет.</div>`;
   const live = list.filter(m => m.status === 'live'), soon = list.filter(m => m.status !== 'live');
   let h = `<div class="hint">Список топ-матчей получен от Fonbet, порядок как на сайте.</div>`;
@@ -762,6 +779,12 @@ function renderSportBar(inSearch){
   const cnt = {}, meta = {}; let total = 0;
   parsedMatches.forEach(m => { meta[m.sportKey] = { name:m.sport, icon:m.sportIcon }; });
   inSearch.filter(tabFn).forEach(m => { cnt[m.sportKey] = (cnt[m.sportKey] || 0) + 1; total++; });
+  if (currentStatusTab === 'top' && topActive){
+    const okIds = new Set(inSearch.filter(m => m.status !== 'finished').map(m => String(m.id)));
+    Object.keys(cnt).forEach(k => delete cnt[k]);
+    Object.keys(meta).forEach(k => { const n = effectiveTopOrder(k).filter(id => okIds.has(id)).length; if (n) cnt[k] = n; });
+    total = topOrder.filter(id => okIds.has(id)).length;
+  }
   const order = SPORTS.map(x => x[0]);
   const keys = Object.keys(meta).filter(k => cnt[k] || k === currentSport).sort((a, b) => {
     const ia = order.indexOf(a), ib = order.indexOf(b);
@@ -1268,7 +1291,7 @@ async function analyzeSingleMatch(id, force){
 }
 
 /* ================= Экспресс ================= */
-const expScopeOk = m => m.tier >= 0 && Object.keys(m.odds).length > 0 &&
+const expScopeOk = m => !m.blocked && m.tier >= 0 && Object.keys(m.odds).length > 0 &&
   ((expScope !== 'upcoming' && m.status === 'live') || (expScope !== 'live' && m.status === 'upcoming'));
 function expCandidates(){
   dt = readDt();
