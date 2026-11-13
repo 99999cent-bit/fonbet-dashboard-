@@ -138,6 +138,31 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#252b34;border:1px solid var(--accent);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;z-index:60;display:none;max-width:90%}
 .bet[data-mid]{cursor:pointer}
 .bet[data-mid]:active{filter:brightness(1.2)}
+.tab-btn.history.active{color:#4dd0e1}
+.stats-bar{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.st-top{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;font-size:13px}
+.st-top select,.st-top input{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px}
+.st-row{font-size:13px;margin:4px 0}
+.st-prog{height:6px;border-radius:3px;background:var(--red);overflow:hidden;margin:3px 0 8px}.st-prog span{display:block;height:100%;background:var(--accent)}
+.hx{border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:10px;background:var(--card)}
+.hx.lost{border-color:var(--red);background:rgba(255,61,87,.12)}
+.hx.won{border-color:var(--accent);background:rgba(0,230,118,.08)}
+.hx.unknown{border-color:#ffb300}
+.hx-head{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.hx-badge{font-weight:800;font-size:12.5px}
+.hx.lost .hx-badge,.hx.lost .hx-lost{color:var(--red)}.hx.won .hx-badge{color:var(--accent)}
+.hx-sub{font-size:12px;color:var(--muted);margin:3px 0 6px}
+.hx-lost{font-size:12.5px;font-weight:700;margin-bottom:6px}
+.hx-leg{border-left:4px solid var(--border);padding:6px 8px;margin-bottom:6px;background:rgba(0,0,0,.18);border-radius:4px;font-size:12.5px}
+.hx-leg.won{border-color:var(--accent)}.hx-leg.lost{border-color:var(--red);background:rgba(255,61,87,.18)}.hx-leg.unknown{border-color:#ffb300}
+.hx-m{font-weight:700;font-size:13px}.hx-b{margin:2px 0}.hx-l{color:#cfd8dc}.hx-n{color:#ffb300;font-size:11.5px}
+.hx-st.won{color:var(--accent)}.hx-st.lost{color:var(--red)}.hx-st.unknown{color:#ffb300}
+.hx-man{display:flex;gap:4px;margin-top:5px;align-items:center;font-size:11px;color:var(--muted)}
+.hx-man button,.hx-del{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:3px 9px;font-size:12px;cursor:pointer}
+.hx-man button.on{border-color:var(--accent);background:rgba(0,230,118,.15)}
+.hx-del{margin-top:4px;color:var(--muted)}
+.bd{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12.5px}
+.bd-row{display:flex;justify-content:space-between;padding:2px 0}
 </style>
 </head>
 <body>
@@ -156,6 +181,14 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
     <option value="15">15 с</option><option value="30">30 с</option><option value="60">60 с</option>
   </select>
   <button id="btnPause">⏸ Пауза</button>
+</div>
+
+<div class="stats-bar" id="statsBar">
+  <div class="st-top"><b>📊 Аналитика прогнозов</b>
+    <select id="stPeriod"><option value="all">Всё время</option><option value="today">Сегодня</option><option value="7d">7 дней</option><option value="30d">30 дней</option><option value="custom">Свой период…</option></select>
+    <input type="date" id="stFrom" style="display:none"><input type="date" id="stTo" style="display:none">
+  </div>
+  <div id="stBody"></div>
 </div>
 
 <div class="config-panel" style="grid-template-columns:1fr">
@@ -180,6 +213,7 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
   <button class="tab-btn upcoming" data-tab="upcoming">📅 Будущие</button>
   <button class="tab-btn finished" data-tab="finished">🏁 Закрытые</button>
   <button class="tab-btn express" data-tab="express">🎯 Экспресс</button>
+  <button class="tab-btn history" data-tab="history">📚 Мои экспрессы</button>
 </div>
 
 <div class="filters" id="sportBar"></div>
@@ -284,6 +318,7 @@ window.addEventListener('load', () => {
   setInterval(tick, 1000);
   initExpress();
   initMatchModal();
+  initStats();
 
   loadModels();
   loadOdds();
@@ -498,6 +533,8 @@ function processData(data){
     });
   }
   fresh.forEach(m => finishedStore.delete(m.id));
+  updateTracking(fresh, !prevReal.length || fresh.length >= prevReal.length * 0.5);
+  renderStats();
   while (finishedStore.size > 150) finishedStore.delete(finishedStore.keys().next().value);
 
   parsedMatches = fresh.concat([...finishedStore.values()]);
@@ -656,6 +693,9 @@ function renderMatches(){
   const container = $('matchesContainer');
   dt = readDt();
   $('expressPanel').style.display = currentStatusTab === 'express' ? 'block' : 'none';
+  const isHist = currentStatusTab === 'history';
+  $('sportBar').style.display = isHist ? 'none' : '';
+  document.querySelector('.dt-bar').style.display = isHist ? 'none' : '';
   const q = $('searchInput').value.trim().toLowerCase();
   const inSearch = parsedMatches.filter(m => passSearch(m, q));
   const base = inSearch.filter(m => currentSport === 'all' || m.sportKey === currentSport);
@@ -666,6 +706,7 @@ function renderMatches(){
   document.querySelector('.tab-btn.upcoming').textContent = `📅 Будущие (${counts.upcoming})`;
   document.querySelector('.tab-btn.finished').textContent = `🏁 Закрытые (${counts.finished})`;
 
+  if (currentStatusTab === 'history'){ container.innerHTML = renderHistory(); return; }
   if (currentStatusTab === 'top'){ container.innerHTML = renderTop(base); return; }
   if (currentStatusTab === 'express'){ const list = expCandidates(); expVisible = list.length; container.innerHTML = renderExpressList(list); updateExInfo(); return; }
 
@@ -802,6 +843,9 @@ function openOnly(card){
 }
 
 function onContainerClick(e){
+  const hv = e.target.closest('[data-hv]'); if (hv){ histView = hv.dataset.hv; renderMatches(); return; }
+  const hr = e.target.closest('[data-hr]'); if (hr){ histRes = hr.dataset.hr; renderMatches(); return; }
+  const ha = e.target.closest('[data-hact]'); if (ha){ handleHistAct(ha); return; }
   const act = e.target.closest('[data-act]');
   if (act){
     if (act.dataset.act === 'more'){ const k = act.dataset.sport; sportLimit[k] = (sportLimit[k] || 40) + 40; renderMatches(); return; }
@@ -1112,6 +1156,7 @@ async function analyzeSingleMatch(id, force){
   try {
     const raw = await geminiRequest(prompt, true);
     aiResults[id] = { state:'done', raw, data: parseBets(raw), at: Date.now(), score: m.score };
+    recordSingle(m);
   } catch (err){ aiResults[id] = { state:'error', text: err.message }; }
   renderAll();
 }
@@ -1154,7 +1199,7 @@ function renderExpressResult(){
   r.legs.forEach((l, i) => {
     h += `<div class="bet ${l.risk}" data-mid="${esc(l.id)}"><div class="bet-top"><b>${i + 1}. ${esc(l.market)}</b><span class="bet-who">→ ${esc(l.desc)}</span><span class="bet-odd">кэф ${esc(l.odd)}</span><span class="bet-risk">${RISK[l.risk]}</span></div><div class="ex-leg-match">${esc(l.title)}</div><div class="bet-why">${esc(l.reason)}</div></div>`;
   });
-  h += `<div class="ai-foot">Собрано в ${clock(r.at)} по коэффициентам на этот момент. Чем больше событий, тем ниже шанс, что экспресс пройдёт целиком. ИИ не знает исходов, это не гарантия.</div><button class="btn-more" id="exCopy">📋 Копировать экспресс</button></div>`;
+  h += `<div class="ai-foot">💾 Сохранён во вкладке «Мои экспрессы». Собрано в ${clock(r.at)} по коэффициентам на этот момент. Чем больше событий, тем ниже шанс, что экспресс пройдёт целиком. ИИ не знает исходов, это не гарантия.</div><button class="btn-more" id="exCopy">📋 Копировать экспресс</button></div>`;
   el.innerHTML = h;
   if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -1187,7 +1232,9 @@ async function buildExpress(){
     });
     const used = legs.slice(0, n);
     if (!used.length) throw new Error('⚠️ ИИ не вернул распознаваемых ставок. Попробуйте ещё раз.');
-    expResult = { state:'done', legs: used, total: used.reduce((p, l) => p * l.odd, 1), summary: (d && d.summary) || '', at: Date.now() };
+    const total = used.reduce((p, l) => p * l.odd, 1);
+    saveExpress(used, (d && d.summary) || '', total);
+    expResult = { state:'done', legs: used, total, summary: (d && d.summary) || '', at: Date.now() };
   } catch (err){ expResult = { state:'error', text: err.message }; }
   renderExpressResult();
 }
@@ -1268,6 +1315,238 @@ function initMatchModal(){
       mh.lastElementChild.textContent = body.classList.contains('shut') ? '▸' : '▾';
     }
   });
+}
+
+/* ================= История, проверка результатов, аналитика ================= */
+let preds = [], exps = [], track = {}, histView = 'exp', histRes = 'all';
+const STATE_LBL = { won:'✅ Зашла', lost:'❌ Не зашла', void:'↩️ Возврат', unknown:'❓ Нужна отметка', pending:'⏳ Ожидает' };
+const uid = pfx => pfx + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+function loadStore(){
+  const get = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v || d; } catch (e){ return d; } };
+  preds = get('fb_preds', []); exps = get('fb_exps', []); track = get('fb_track', {});
+}
+function saveStore(){
+  try {
+    localStorage.setItem('fb_preds', JSON.stringify(preds.slice(-3000)));
+    localStorage.setItem('fb_exps', JSON.stringify(exps.slice(-400)));
+    localStorage.setItem('fb_track', JSON.stringify(track));
+  } catch (e){}
+}
+function snap(m){
+  const [a, b] = String(m.score).split(':').map(x => parseInt(x, 10));
+  const subs = {};
+  m.subs.forEach(sb => {
+    if (!sb.score) return;
+    const [x, y] = sb.score.split(':').map(n => parseInt(n, 10));
+    if (!isNaN(x) && !isNaN(y)) subs[normName(sb.name)] = { n: sb.name, a: x, b: y };
+  });
+  return { a, b, subs };
+}
+function touchTrack(m){
+  const t = track[String(m.id)] || (track[String(m.id)] = { a:0, b:0, subs:{}, seenLive:false, lastSeen:0, miss:0 });
+  Object.assign(t, snap(m));
+  if (m.status === 'live') t.seenLive = true;
+  t.lastSeen = Date.now(); t.miss = 0;
+}
+function makePred(m, o){
+  touchTrack(m);
+  return { pid: uid('p'), src: o.src, mid: String(m.id), t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon,
+    market: o.market, sub: o.sub || '', risk: o.risk, odd: o.odd, desc: o.desc || '', reason: o.reason || '',
+    at: Date.now(), state: o.key ? 'pending' : 'unknown', note: o.key ? '' : 'ставка не распознана — отметьте вручную' };
+}
+function saveExpress(legs, summary, total){
+  const ex = { eid: uid('e'), at: Date.now(), summary, total, legs: [] };
+  legs.forEach(l => {
+    const m = matchById[String(l.id)]; if (!m) return;
+    const p = makePred(m, { src:'express', market: l.market, key: resolveKey(m, l.market), odd: l.odd, risk: l.risk, desc: l.desc, reason: l.reason });
+    p.eid = ex.eid; preds.push(p); ex.legs.push(p.pid);
+  });
+  exps.push(ex); saveStore(); renderStats();
+  return ex;
+}
+function recordSingle(m){
+  const es = pickEntries(m); if (!es.length) return;
+  preds = preds.filter(p => !(p.src === 'single' && p.mid === String(m.id) && p.state === 'pending'));
+  es.forEach(e => {
+    const sb = e.sub >= 0 ? m.subs[e.sub] : null;
+    const odd = e.key ? Number(sb ? sb.odds[e.key] : m.odds[e.key]) : (Number(e.b.odds) || 0);
+    preds.push(makePred(m, { src:'single', market: e.key || String(e.b.market || ''), key: e.key, sub: sb ? sb.name : '', odd, risk: e.risk, desc: betWho(m, e), reason: e.b.reason }));
+  });
+  saveStore(); renderStats();
+}
+
+/* Результат ставки по финальному счёту (для доп. рынков — по счёту этого рынка) */
+function evalPred(p, t){
+  let a = t.a, b = t.b;
+  if (p.sub){ const sc = t.subs[normName(p.sub)]; if (!sc) return 'unknown'; a = sc.a; b = sc.b; }
+  if (isNaN(a) || isNaN(b)) return 'unknown';
+  const k = String(p.market);
+  if (k === 'П1') return a > b ? 'won' : 'lost';
+  if (k === 'П2') return b > a ? 'won' : 'lost';
+  if (k === 'X') return a === b ? 'won' : 'lost';
+  const mm = k.match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/); if (!mm) return 'unknown';
+  const p0 = parseFloat(String(mm[2]).replace(',', '.')); if (isNaN(p0)) return 'unknown';
+  const lines = ((p0 * 4) % 2 !== 0) ? [p0 - 0.25, p0 + 0.25] : [p0];   // четвертные линии делим пополам
+  let sum = 0;
+  lines.forEach(l => {
+    const v = mm[1] === 'Ф1' ? a + l - b : mm[1] === 'Ф2' ? b + l - a : mm[1] === 'ТБ' ? a + b - l : l - (a + b);
+    sum += Math.sign(v);
+  });
+  return sum > 0 ? 'won' : sum < 0 ? 'lost' : 'void';
+}
+function settleMatch(mid, how){
+  const t = track[mid]; if (!t) return;
+  const stale = how === 'gone' && (!t.seenLive || Date.now() - t.lastSeen > 15 * 60 * 1000);
+  preds.filter(p => p.mid === mid && p.state === 'pending').forEach(p => {
+    if (stale){ p.state = 'unknown'; p.note = t.seenLive ? 'страница была закрыта в момент окончания — отметьте вручную' : 'матч не наблюдался в лайве — отметьте вручную'; }
+    else {
+      p.state = evalPred(p, t);
+      const sc = p.sub ? t.subs[normName(p.sub)] : t;
+      if (sc && !isNaN(sc.a)) p.final = `${sc.a}:${sc.b}`;
+      if (p.state === 'unknown') p.note = 'нет данных для проверки — отметьте вручную';
+    }
+    p.settledAt = Date.now();
+  });
+  delete track[mid];
+}
+function updateTracking(fresh, healthy){
+  const pend = new Set(preds.filter(p => p.state === 'pending').map(p => p.mid));
+  Object.keys(track).forEach(k => { if (!pend.has(k)) delete track[k]; });
+  if (!pend.size){ saveStore(); return; }
+  const byId = {}; fresh.forEach(m => byId[String(m.id)] = m);
+  pend.forEach(mid => {
+    const m = byId[mid];
+    const t = track[mid] || (track[mid] = { a:0, b:0, subs:{}, seenLive:false, lastSeen:0, miss:0 });
+    if (m){
+      Object.assign(t, snap(m)); if (m.status === 'live') t.seenLive = true;
+      t.lastSeen = Date.now(); t.miss = 0;
+      if (m.status === 'finished') settleMatch(mid, 'feed');
+    } else if (healthy){
+      t.miss = (t.miss || 0) + 1;
+      if (t.miss >= 2) settleMatch(mid, 'gone');
+    }
+  });
+  saveStore();
+}
+
+function expStatus(ex, pm){
+  const legs = ex.legs.map(id => pm.get(id)).filter(Boolean);
+  if (!legs.length) return 'pending';
+  if (legs.some(l => l.state === 'lost')) return 'lost';
+  if (legs.every(l => l.state === 'void')) return 'void';
+  if (legs.every(l => l.state === 'won' || l.state === 'void')) return 'won';
+  if (legs.some(l => l.state === 'unknown') && !legs.some(l => l.state === 'pending')) return 'unknown';
+  return 'pending';
+}
+
+/* ----- период и счётчики вверху ----- */
+function readPeriod(){
+  const m = $('stPeriod').value; let from = 0, to = Infinity;
+  if (m === 'today'){ const d = new Date(); d.setHours(0, 0, 0, 0); from = d.getTime(); }
+  else if (m === '7d') from = Date.now() - 7 * 864e5;
+  else if (m === '30d') from = Date.now() - 30 * 864e5;
+  else if (m === 'custom'){
+    if ($('stFrom').value) from = new Date($('stFrom').value + 'T00:00:00').getTime();
+    if ($('stTo').value) to = new Date($('stTo').value + 'T23:59:59').getTime();
+  }
+  return { from, to };
+}
+const inPer = (ts, pr) => ts >= pr.from && ts <= pr.to;
+function tally(states){
+  const c = { won:0, lost:0, void:0, unknown:0, pending:0 };
+  states.forEach(x => { if (c[x] !== undefined) c[x]++; });
+  const dec = c.won + c.lost; c.pct = dec ? Math.round(c.won / dec * 100) : null;
+  return c;
+}
+function tallyHtml(label, c){
+  const lp = c.pct === null ? '' : ` (${100 - c.pct}%)`, wp = c.pct === null ? '' : ` (${c.pct}%)`;
+  return `<div class="st-row"><b>${label}</b> ✅ ${c.won}${wp} · ❌ ${c.lost}${lp}` + (c.void ? ` · ↩️ ${c.void}` : '') + (c.unknown ? ` · ❓ ${c.unknown}` : '') + (c.pending ? ` · ⏳ ${c.pending}` : '') +
+    `</div><div class="st-prog"><span style="width:${c.pct === null ? 0 : c.pct}%"></span></div>`;
+}
+function renderStats(){
+  const pr = readPeriod(), pm = new Map(preds.map(p => [p.pid, p]));
+  const cp = tally(preds.filter(p => inPer(p.at, pr)).map(p => p.state));
+  const ce = tally(exps.filter(e => inPer(e.at, pr)).map(e => expStatus(e, pm)));
+  $('stBody').innerHTML = tallyHtml('Прогнозы (ставки):', cp) + tallyHtml('Экспрессы:', ce);
+}
+function initStats(){
+  loadStore();
+  $('stPeriod').addEventListener('change', () => { const c = $('stPeriod').value === 'custom'; $('stFrom').style.display = c ? '' : 'none'; $('stTo').style.display = c ? '' : 'none'; renderStats(); renderMatches(); });
+  ['stFrom', 'stTo'].forEach(id => $(id).addEventListener('input', () => { renderStats(); renderMatches(); }));
+  renderStats();
+}
+
+/* ----- вкладка «Мои экспрессы» ----- */
+const fmtDT = ts => new Date(ts).toLocaleString([], { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+function liveLine(p){
+  const m = matchById[p.mid];
+  if (m){
+    if (m.status === 'live') return `🔴 <span class="live-timer" data-id="${esc(m.id)}">${esc(fmtTimer(m, false))}</span> · ${esc(m.score)}`;
+    if (m.status === 'upcoming') return `📅 ${esc(fmtStart(m))}`;
+    return `🏁 ${esc(m.score)}`;
+  }
+  return p.final ? `🏁 итог ${esc(p.final)}` : '<span style="color:var(--muted)">нет в линии</span>';
+}
+function manualBtns(p){
+  return `<div class="hx-man">Отметить:` + [['won', '✅'], ['lost', '❌'], ['void', '↩️']].map(([s2, ic]) => `<button data-hact="set" data-pid="${esc(p.pid)}" data-st="${s2}" class="${p.state === s2 ? 'on' : ''}">${ic}</button>`).join('') + `</div>`;
+}
+function legHtml(p){
+  return `<div class="hx-leg ${p.state}"><div class="hx-m">${p.icon || ''} ${esc(p.t1)} — ${esc(p.t2)}</div>
+    <div class="hx-b"><b>${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b> → ${esc(p.desc)} · кэф ${esc(p.odd)} · ${RISK[p.risk] || ''}</div>
+    <div class="hx-l">${liveLine(p)} <span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div>
+    ${p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${manualBtns(p)}</div>`;
+}
+function expCard(ex, pm, no){
+  const legs = ex.legs.map(id => pm.get(id)).filter(Boolean), st = expStatus(ex, pm);
+  const lost = legs.filter(l => l.state === 'lost');
+  const odds = legs.filter(l => l.state !== 'void').reduce((a, l) => a * (Number(l.odd) || 1), 1);
+  const BADGE = { won:'✅ ЗАШЁЛ', lost:'❌ НЕ ЗАШЁЛ', pending:'⏳ В игре', unknown:'❓ Нужна отметка', void:'↩️ Возврат' };
+  return `<div class="hx ${st}"><div class="hx-head"><b>Экспресс #${no} · ${legs.length} событий · ${fmtDT(ex.at)}</b><span class="hx-badge">${BADGE[st]}</span></div>
+    <div class="hx-sub">Общий кэф ≈ ${odds.toFixed(2)}${legs.filter(l => l.state === 'won').length ? ` · зашло ${legs.filter(l => l.state === 'won').length} из ${legs.length}` : ''}</div>
+    ${lost.length ? `<div class="hx-lost">❌ Не зашло (${lost.length}): ${lost.map(l => esc(l.t1 + ' — ' + l.t2 + ' (' + l.market + ')')).join('; ')}</div>` : ''}
+    ${legs.map(legHtml).join('')}<button class="hx-del" data-hact="delex" data-eid="${esc(ex.eid)}">🗑 Удалить</button></div>`;
+}
+function breakdownHtml(ps){
+  const rows = [['🟢 Надёжные', p => p.risk === 'low'], ['🟡 Средний риск', p => p.risk === 'medium'], ['🔴 Рискованные', p => p.risk === 'high'],
+    ['Исход', p => !p.sub && groupOf(p.market) === 'Исход'], ['Фора', p => !p.sub && groupOf(p.market) === 'Фора'],
+    ['Тотал', p => !p.sub && groupOf(p.market) === 'Тотал'], ['Доп. рынки', p => !!p.sub]];
+  const out = rows.map(([n, f]) => { const c = tally(ps.filter(f).map(p => p.state)); return c.won + c.lost ? `<div class="bd-row"><span>${n}</span><span>✅ ${c.won} · ❌ ${c.lost} · ${c.pct}%</span></div>` : ''; }).join('');
+  return `<div class="bd"><b>Точность по типам ставок</b>${out || '<div class="hint" style="text-align:left">Пока нет завершённых прогнозов.</div>'}</div>`;
+}
+function renderHistory(){
+  const q = $('searchInput').value.trim().toLowerCase(), pr = readPeriod();
+  const pm = new Map(preds.map(p => [p.pid, p]));
+  const hit = p => !q || (p.t1 + ' ' + p.t2 + ' ' + p.league).toLowerCase().includes(q);
+  const exL = exps.filter(e => inPer(e.at, pr) && e.legs.map(id => pm.get(id)).filter(Boolean).some(hit));
+  const sgL = preds.filter(p => p.src === 'single' && inPer(p.at, pr) && hit(p));
+  const resOk = st => histRes === 'all' || (histRes === 'pending' ? (st === 'pending' || st === 'unknown') : st === histRes);
+  let h = `<div class="ex-row"><button data-hv="exp" class="${histView === 'exp' ? 'active' : ''}">🎯 Экспрессы (${exL.length})</button><button data-hv="single" class="${histView === 'single' ? 'active' : ''}">🤖 Одиночные прогнозы (${sgL.length})</button></div>`;
+  h += `<div class="ex-row">` + [['all', 'Все'], ['won', '✅ Зашли'], ['lost', '❌ Не зашли'], ['pending', '⏳ Ожидают']].map(([k, l]) => `<button data-hr="${k}" class="${histRes === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
+  h += breakdownHtml(preds.filter(p => inPer(p.at, pr)));
+  h += `<div class="hint">Период выбирается в блоке «Аналитика» вверху страницы. Результаты определяются автоматически, пока страница открыта; сомнительные можно отметить вручную.</div>`;
+  if (histView === 'exp'){
+    const list = exL.filter(e => resOk(expStatus(e, pm))).slice().reverse();
+    h += list.length ? list.slice(0, 100).map(e => expCard(e, pm, exps.indexOf(e) + 1)).join('') : `<div class="status-msg">Экспрессов нет. Соберите экспресс во вкладке «🎯 Экспресс», он сохранится здесь.</div>`;
+  } else {
+    const list = sgL.filter(p => resOk(p.state)).slice().reverse();
+    h += list.length ? list.slice(0, 150).map(p => `<div class="hx ${p.state}"><div class="hx-sub">${fmtDT(p.at)} · одиночный прогноз</div>${legHtml(p)}<button class="hx-del" data-hact="delpred" data-pid="${esc(p.pid)}">🗑 Удалить</button></div>`).join('') : `<div class="status-msg">Одиночных прогнозов нет. Нажмите «⚡ AI Анализ матча» на любом матче.</div>`;
+  }
+  return h;
+}
+function handleHistAct(b){
+  const a = b.dataset.hact;
+  if (a === 'set'){
+    const p = preds.find(x => x.pid === b.dataset.pid);
+    if (p){ p.state = b.dataset.st; p.note = ''; p.manual = true; p.settledAt = Date.now(); }
+  } else if (a === 'delex'){
+    if (window.confirm && !window.confirm('Удалить экспресс из истории?')) return;
+    const ex = exps.find(x => x.eid === b.dataset.eid);
+    if (ex){ preds = preds.filter(p => !ex.legs.includes(p.pid)); exps = exps.filter(x => x !== ex); }
+  } else if (a === 'delpred'){
+    preds = preds.filter(p => p.pid !== b.dataset.pid);
+  }
+  saveStore(); renderStats(); renderMatches();
 }
 
 function analyzeTopLine(){
