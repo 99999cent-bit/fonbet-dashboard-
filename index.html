@@ -163,6 +163,10 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
 .hx-del{margin-top:4px;color:var(--muted)}
 .bd{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:12.5px}
 .bd-row{display:flex;justify-content:space-between;padding:2px 0}
+.tab-btn.analyses.active{color:#ffd54f}
+.cf-row{margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cf-btn{background:rgba(0,230,118,.15);color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer}
+.cf-btn.ghost{background:transparent;color:var(--muted);border-color:var(--border);font-weight:500}
 </style>
 </head>
 <body>
@@ -214,6 +218,7 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
   <button class="tab-btn finished" data-tab="finished">🏁 Закрытые</button>
   <button class="tab-btn express" data-tab="express">🎯 Экспресс</button>
   <button class="tab-btn history" data-tab="history">📚 Мои экспрессы</button>
+  <button class="tab-btn analyses" data-tab="analyses">🔍 Анализ матча</button>
 </div>
 
 <div class="filters" id="sportBar"></div>
@@ -799,7 +804,7 @@ function renderMatches(){
   const container = $('matchesContainer');
   dt = readDt();
   $('expressPanel').style.display = currentStatusTab === 'express' ? 'block' : 'none';
-  const isHist = currentStatusTab === 'history';
+  const isHist = currentStatusTab === 'history' || currentStatusTab === 'analyses';
   $('sportBar').style.display = isHist ? 'none' : '';
   document.querySelector('.dt-bar').style.display = isHist ? 'none' : '';
   const q = $('searchInput').value.trim().toLowerCase();
@@ -813,6 +818,7 @@ function renderMatches(){
   document.querySelector('.tab-btn.finished').textContent = `🏁 Закрытые (${counts.finished})`;
 
   if (currentStatusTab === 'history'){ container.innerHTML = renderHistory(); return; }
+  if (currentStatusTab === 'analyses'){ container.innerHTML = renderAnalyses(); return; }
   if (currentStatusTab === 'top'){ container.innerHTML = renderTop(base); return; }
   if (currentStatusTab === 'express'){ const list = expCandidates(); expVisible = list.length; container.innerHTML = renderExpressList(list); updateExInfo(); return; }
 
@@ -955,6 +961,8 @@ function openOnly(card){
 }
 
 function onContainerClick(e){
+  const ca = e.target.closest('[data-cact]'); if (ca){ handleConfirm(ca); return; }
+  const av = e.target.closest('[data-av]'); if (av){ anView = av.dataset.av; renderMatches(); return; }
   const hv = e.target.closest('[data-hv]'); if (hv){ histView = hv.dataset.hv; renderMatches(); return; }
   const hr = e.target.closest('[data-hr]'); if (hr){ histRes = hr.dataset.hr; renderMatches(); return; }
   const ha = e.target.closest('[data-hact]'); if (ha){ handleHistAct(ha); return; }
@@ -1264,13 +1272,13 @@ function aiBox(m){
   let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная (подсвечены и в таблицах коэффициентов)</div>`;
   if (d && d.summary) h += `<div class="ai-sum">${esc(d.summary)}</div>`;
   if (d && Array.isArray(d.bets) && d.bets.length){
-    pickEntries(m).forEach(e => {
+    pickEntries(m).forEach((e, i) => {
       const b = e.b, sb = e.sub >= 0 ? m.subs[e.sub] : null, w = betWho(m, e);
       const odd = e.key ? (sb ? sb.odds[e.key] : m.odds[e.key]) : b.odds;
-      h += `<div class="bet ${e.risk}"><div class="bet-top"><b>${esc(betTitle(m, e))}</b>${w ? `<span class="bet-who">→ ${esc(w)}</span>` : ''}<span class="bet-odd">${odd !== undefined && odd !== null ? 'кэф ' + esc(odd) : ''}</span><span class="bet-risk">${RISK[e.risk]}</span></div><div class="bet-why">${esc(b.reason || '')}</div></div>`;
+      h += `<div class="bet ${e.risk}"><div class="bet-top"><b>${esc(betTitle(m, e))}</b>${w ? `<span class="bet-who">→ ${esc(w)}</span>` : ''}<span class="bet-odd">${odd !== undefined && odd !== null ? 'кэф ' + esc(odd) : ''}</span><span class="bet-risk">${RISK[e.risk]}</span></div><div class="bet-why">${esc(b.reason || '')}</div>${confirmCtl(m, i)}</div>`;
     });
   } else h += `<div class="log">${esc(r.raw || '')}</div>`;
-  h += `<div class="ai-foot">Разбор при счёте ${esc(r.score)} в ${clock(r.at)}${r.score !== m.score ? ' · <span class="bad">счёт изменился, пересчитайте</span>' : ''}. ИИ не знает исход матча, это разбор коэффициентов, а не гарантия.</div><button class="btn-more" data-act="reanalyze">🔄 Пересчитать</button></div>`;
+  h += `<div class="ai-foot">Разбор при счёте ${esc(r.score)} в ${clock(r.at)}${r.score !== m.score ? ' · <span class="bad">счёт изменился, пересчитайте</span>' : ''}. ИИ не знает исход матча, это разбор коэффициентов, а не гарантия.</div>${confirmAllCtl(m)}<button class="btn-more" data-act="reanalyze">🔄 Пересчитать</button></div>`;
   return h;
 }
 
@@ -1285,7 +1293,7 @@ async function analyzeSingleMatch(id, force){
   try {
     const raw = await geminiRequest(prompt, true);
     aiResults[id] = { state:'done', raw, data: parseBets(raw), at: Date.now(), score: m.score };
-    recordSingle(m);
+    const A = recordAnalysis(m); if (A) aiResults[id].aid = A.aid;
   } catch (err){ aiResults[id] = { state:'error', text: err.message }; }
   renderAll();
 }
@@ -1428,6 +1436,7 @@ function initMatchModal(){
   $('btnCloseMatch').addEventListener('click', close);
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   $('matchModalBody').addEventListener('click', e => {
+    const ca = e.target.closest('[data-cact]'); if (ca){ handleConfirm(ca); return; }
     const card = e.target.closest('.match-card'); if (!card) return;
     const act = e.target.closest('[data-act]');
     if (act){
@@ -1447,19 +1456,20 @@ function initMatchModal(){
 }
 
 /* ================= История, проверка результатов, аналитика ================= */
-let preds = [], exps = [], track = {}, histView = 'exp', histRes = 'all';
+let analyses = [], preds = [], exps = [], track = {}, histView = 'exp', histRes = 'all';
 const STATE_LBL = { won:'✅ Зашла', lost:'❌ Не зашла', void:'↩️ Возврат', unknown:'❓ Нужна отметка', pending:'⏳ Ожидает' };
 const uid = pfx => pfx + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 function loadStore(){
   const get = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v || d; } catch (e){ return d; } };
-  preds = get('fb_preds', []); exps = get('fb_exps', []); track = get('fb_track', {});
+  preds = get('fb_preds', []); exps = get('fb_exps', []); track = get('fb_track', {}); analyses = get('fb_analyses', []);
 }
 function saveStore(){
   try {
     localStorage.setItem('fb_preds', JSON.stringify(preds.slice(-3000)));
     localStorage.setItem('fb_exps', JSON.stringify(exps.slice(-400)));
     localStorage.setItem('fb_track', JSON.stringify(track));
+    localStorage.setItem('fb_analyses', JSON.stringify(analyses.slice(-300)));
   } catch (e){}
 }
 function snap(m){
@@ -1562,6 +1572,97 @@ function updateTracking(fresh, healthy){
   saveStore();
 }
 
+/* Анализ матча: сохраняется в «Анализ матча». Ставкой (в истории и аналитике) становится только после «Подтвердить» */
+function recordAnalysis(m){
+  const es = pickEntries(m); if (!es.length) return null;
+  analyses = analyses.filter(a => !(a.mid === String(m.id) && !a.bets.some(b => b.pid)));
+  const r = aiResults[m.id];
+  const A = { aid: uid('a'), mid: String(m.id), t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon, at: Date.now(), score: m.score,
+    summary: (r && r.data && r.data.summary) || '',
+    bets: es.map(e => {
+      const sb = e.sub >= 0 ? m.subs[e.sub] : null;
+      return { market: e.key || String(e.b.market || ''), key: e.key, sub: sb ? sb.name : '', risk: e.risk,
+        odd: e.key ? Number(sb ? sb.odds[e.key] : m.odds[e.key]) : (Number(e.b.odds) || 0), desc: betWho(m, e), reason: e.b.reason || '', pid: null };
+    }) };
+  analyses.push(A); saveStore();
+  return A;
+}
+function confirmBet(aid, i, quiet){
+  const A = analyses.find(a => a.aid === aid); if (!A) return false;
+  const b = A.bets[i]; if (!b || (b.pid && preds.some(p => p.pid === b.pid))) return false;
+  const m = matchById[A.mid];
+  if (!m || m.status === 'finished'){ toast('Матч уже закончился или убран из линии: подтвердить ставку нельзя'); return false; }
+  const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason });
+  p.aid = aid; p.at = Date.now(); preds.push(p); b.pid = p.pid;
+  saveStore(); renderStats(); renderAll();
+  if (!quiet) toast('✅ Ставка подтверждена. Результат появится в «Мои экспрессы»');
+  return true;
+}
+function confirmAll(aid){
+  const A = analyses.find(a => a.aid === aid); if (!A) return;
+  let n = 0; A.bets.forEach((b, i) => { if (confirmBet(aid, i, true)) n++; });
+  if (n) toast(`✅ Подтверждено ставок: ${n}`);
+}
+function cancelBet(aid, i){
+  const A = analyses.find(a => a.aid === aid); const b = A && A.bets[i]; if (!b || !b.pid) return;
+  const p = preds.find(x => x.pid === b.pid);
+  if (p && p.state !== 'pending'){ toast('Результат уже известен, отменить нельзя'); return; }
+  preds = preds.filter(x => x.pid !== b.pid); b.pid = null;
+  saveStore(); renderStats(); renderAll();
+}
+function confirmCtl(m, i){
+  const r = aiResults[m.id], A = r && r.aid ? analyses.find(a => a.aid === r.aid) : null;
+  if (!A || !A.bets[i]) return '';
+  const b = A.bets[i], p = b.pid ? preds.find(x => x.pid === b.pid) : null;
+  if (p) return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.state === 'pending' ? `<button class="cf-btn ghost" data-cact="cancel" data-aid="${esc(A.aid)}" data-i="${i}">Отменить</button>` : ''}</div>`;
+  return `<div class="cf-row"><button class="cf-btn" data-cact="confirm" data-aid="${esc(A.aid)}" data-i="${i}">✅ Подтвердить ставку</button></div>`;
+}
+function confirmAllCtl(m){
+  const r = aiResults[m.id], A = r && r.aid ? analyses.find(a => a.aid === r.aid) : null;
+  if (!A || A.bets.length < 2 || A.bets.every(b => b.pid && preds.some(p => p.pid === b.pid))) return '';
+  return `<div class="cf-row"><button class="cf-btn" data-cact="all" data-aid="${esc(A.aid)}">✅ Подтвердить все ставки</button></div>`;
+}
+function handleConfirm(b){
+  const c = b.dataset.cact, aid = b.dataset.aid;
+  if (c === 'confirm') confirmBet(aid, Number(b.dataset.i));
+  else if (c === 'all') confirmAll(aid);
+  else if (c === 'cancel') cancelBet(aid, Number(b.dataset.i));
+  else if (c === 'open') openMatchModal(b.dataset.mid);
+  else if (c === 'del'){
+    if (window.confirm && !window.confirm('Удалить анализ из списка? Уже подтверждённые ставки останутся в истории.')) return;
+    analyses = analyses.filter(a => a.aid !== aid); saveStore(); renderAll();
+  }
+}
+
+/* ----- вкладка «Анализ матча» ----- */
+let anView = 'all';
+function renderAnalyses(){
+  const q = $('searchInput').value.trim().toLowerCase(), pr = readPeriod();
+  const pm = new Map(preds.map(p => [p.pid, p]));
+  const isConf = a => a.bets.some(b => b.pid && pm.has(b.pid));
+  const list = analyses.filter(a => inPer(a.at, pr) && (!q || (a.t1 + ' ' + a.t2 + ' ' + a.league).toLowerCase().includes(q)));
+  const shown = list.filter(a => anView === 'all' || (anView === 'conf' ? isConf(a) : !isConf(a))).slice().reverse();
+  let h = `<div class="ex-row">` + [['all', `Все (${list.length})`], ['new', `⏳ Не подтверждены (${list.filter(a => !isConf(a)).length})`], ['conf', `✅ Подтверждены (${list.filter(isConf).length})`]]
+    .map(([k, l]) => `<button data-av="${k}" class="${anView === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
+  h += `<div class="hint">Сюда попадают матчи, которые вы разбирали кнопкой «⚡ AI Анализ матча». Нажмите «Подтвердить», и ставка будет отслеживаться и попадёт в историю и аналитику, как будто вы её сделали.</div>`;
+  if (!shown.length) return h + `<div class="status-msg">Анализов пока нет. Откройте любой матч и нажмите «⚡ AI Анализ матча».</div>`;
+  shown.slice(0, 100).forEach(A => {
+    const unconf = A.bets.some(b => !(b.pid && pm.has(b.pid)));
+    h += `<div class="hx"><div class="hx-head"><b>${A.icon || ''} ${esc(A.t1)} — ${esc(A.t2)}</b><span class="hx-sub" style="margin:0">${fmtDT(A.at)}</span></div>
+      <div class="hx-sub">${esc(A.league)} · разбор при счёте ${esc(A.score)} · сейчас: ${liveLine({ mid: A.mid })}</div>
+      ${A.summary ? `<div class="ai-sum">${esc(A.summary)}</div>` : ''}`;
+    A.bets.forEach((b, i) => {
+      const p = b.pid ? pm.get(b.pid) : null;
+      h += `<div class="bet ${b.risk}"><div class="bet-top"><b>${esc((b.sub ? b.sub + ': ' : '') + b.market)}</b>${b.desc ? `<span class="bet-who">→ ${esc(b.desc)}</span>` : ''}<span class="bet-odd">кэф ${esc(b.odd || '—')}</span><span class="bet-risk">${RISK[b.risk] || ''}</span></div><div class="bet-why">${esc(b.reason)}</div>`;
+      if (p) h += `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.state === 'pending' ? `<button class="cf-btn ghost" data-cact="cancel" data-aid="${esc(A.aid)}" data-i="${i}">Отменить</button>` : ''}</div>${manualBtns(p)}`;
+      else h += `<div class="cf-row"><button class="cf-btn" data-cact="confirm" data-aid="${esc(A.aid)}" data-i="${i}">✅ Подтвердить ставку</button></div>`;
+      h += `</div>`;
+    });
+    h += `<div class="cf-row">${unconf && A.bets.length > 1 ? `<button class="cf-btn" data-cact="all" data-aid="${esc(A.aid)}">✅ Подтвердить все</button>` : ''}<button class="cf-btn ghost" data-cact="open" data-mid="${esc(A.mid)}">📂 Открыть матч</button><button class="cf-btn ghost" data-cact="del" data-aid="${esc(A.aid)}">🗑 Удалить</button></div></div>`;
+  });
+  return h;
+}
+
 function expStatus(ex, pm){
   const legs = ex.legs.map(id => pm.get(id)).filter(Boolean);
   if (!legs.length) return 'pending';
@@ -1653,7 +1754,7 @@ function renderHistory(){
   const exL = exps.filter(e => inPer(e.at, pr) && e.legs.map(id => pm.get(id)).filter(Boolean).some(hit));
   const sgL = preds.filter(p => p.src === 'single' && inPer(p.at, pr) && hit(p));
   const resOk = st => histRes === 'all' || (histRes === 'pending' ? (st === 'pending' || st === 'unknown') : st === histRes);
-  let h = `<div class="ex-row"><button data-hv="exp" class="${histView === 'exp' ? 'active' : ''}">🎯 Экспрессы (${exL.length})</button><button data-hv="single" class="${histView === 'single' ? 'active' : ''}">🤖 Одиночные прогнозы (${sgL.length})</button></div>`;
+  let h = `<div class="ex-row"><button data-hv="exp" class="${histView === 'exp' ? 'active' : ''}">🎯 Экспрессы (${exL.length})</button><button data-hv="single" class="${histView === 'single' ? 'active' : ''}">🤖 Подтверждённые анализы (${sgL.length})</button></div>`;
   h += `<div class="ex-row">` + [['all', 'Все'], ['won', '✅ Зашли'], ['lost', '❌ Не зашли'], ['pending', '⏳ Ожидают']].map(([k, l]) => `<button data-hr="${k}" class="${histRes === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
   h += breakdownHtml(preds.filter(p => inPer(p.at, pr)));
   h += `<div class="hint">Период выбирается в блоке «Аналитика» вверху страницы. Результаты определяются автоматически, пока страница открыта; сомнительные можно отметить вручную.</div>`;
@@ -1662,7 +1763,7 @@ function renderHistory(){
     h += list.length ? list.slice(0, 100).map(e => expCard(e, pm, exps.indexOf(e) + 1)).join('') : `<div class="status-msg">Экспрессов нет. Соберите экспресс во вкладке «🎯 Экспресс», он сохранится здесь.</div>`;
   } else {
     const list = sgL.filter(p => resOk(p.state)).slice().reverse();
-    h += list.length ? list.slice(0, 150).map(p => `<div class="hx ${p.state}"><div class="hx-sub">${fmtDT(p.at)} · одиночный прогноз</div>${legHtml(p)}<button class="hx-del" data-hact="delpred" data-pid="${esc(p.pid)}">🗑 Удалить</button></div>`).join('') : `<div class="status-msg">Одиночных прогнозов нет. Нажмите «⚡ AI Анализ матча» на любом матче.</div>`;
+    h += list.length ? list.slice(0, 150).map(p => `<div class="hx ${p.state}"><div class="hx-sub">${fmtDT(p.at)} · ставка из анализа матча</div>${legHtml(p)}<button class="hx-del" data-hact="delpred" data-pid="${esc(p.pid)}">🗑 Удалить</button></div>`).join('') : `<div class="status-msg">Подтверждённых ставок из анализа нет. Подтвердите ставку во вкладке «🔍 Анализ матча».</div>`;
   }
   return h;
 }
