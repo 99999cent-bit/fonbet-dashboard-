@@ -171,6 +171,9 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
 .mon{font-size:11.5px;color:var(--accent);margin:2px 0 4px}
 details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summary{cursor:pointer}
 .why{font-size:12px;color:#b0bec5;margin-top:3px}
+.hx-leg[data-omid],.hx-head[data-omid]{cursor:pointer}
+.open-hint{font-size:11px;color:var(--muted);font-weight:400}
+.srv-note{font-size:11.5px;color:#ffb300;margin:4px 0}
 </style>
 </head>
 <body>
@@ -185,7 +188,7 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
   <span id="syncText">Ожидание данных...</span>
   <span style="margin-left:auto">Авто:</span>
   <select id="intervalSelect">
-    <option value="5">5 с</option><option value="10" selected>10 с</option>
+    <option value="1">1 с</option><option value="2">2 с</option><option value="3">3 с</option><option value="5">5 с</option><option value="10" selected>10 с</option>
     <option value="15">15 с</option><option value="30">30 с</option><option value="60">60 с</option>
   </select>
   <button id="btnPause">⏸ Пауза</button>
@@ -237,6 +240,11 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
   <div class="ai-title" style="color:#b388ff">🎯 Экспресс с анализом</div>
   <div class="ex-row"><span>Источник:</span>
     <button data-scope="live" class="active">🔴 Лайв</button><button data-scope="upcoming">📅 Будущие</button><button data-scope="all">Все</button></div>
+  <div class="ex-row"><span>Риск ставок:</span>
+    <button data-risk="low" class="active">🟢 Надёжные</button><button data-risk="medium">🟡 Средние</button><button data-risk="high">🔴 Рискованные</button></div>
+  <div class="ex-row"><span>Дата матчей:</span>
+    <button data-qd="all">Любая</button><button data-qd="today">Сегодня</button><button data-qd="tomorrow">Завтра</button><button data-qd="after">Послезавтра</button></div>
+  <div class="hint" id="exFilters" style="text-align:left"></div>
   <div class="ex-row"><span>Событий (авто):</span><input type="range" id="exN" min="3" max="30" value="5"><b id="exNv">5</b></div>
   <div class="ex-row"><button id="exSelAll">☑ Отметить видимые (до 30)</button><button id="exClear">✖ Снять все</button></div>
   <div class="hint" id="exInfo" style="text-align:left"></div>
@@ -254,6 +262,9 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
       <label>Ссылка на бэкенд Railway:</label>
       <input type="text" id="backendUrl" value="https://fonbet-dashboard-production.up.railway.app">
     </div>
+    <div class="d-title" style="margin-top:14px">Сервер слежения (необязательно)</div>
+    <input type="text" id="trackerUrl" placeholder="https://ваш-сервер-слежения.up.railway.app" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
+    <div class="hint" id="trackerStatus" style="text-align:left">Не подключён. Сервер запоминает итоговый счёт матчей из ваших ставок, даже когда приложение закрыто. Файлы лежат в папке tracker.</div>
     <div class="d-title" style="margin-top:14px">Слежение за матчами</div>
     <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="wakeChk"> 📱 Не выключать экран, пока открыта страница</label>
     <div class="hint" id="wakeNote" style="text-align:left">Результаты ставок проставляются, пока страница открыта и активна. Если экран гаснет или страница уходит в фон, браузер приостанавливает слежение.</div>
@@ -285,7 +296,7 @@ let sportsTouched = false, lastAutoOpen = null;
 const toggledMk = new Set(), aiResults = {};
 let topOrder = [], topSet = new Set(), topActive = false;
 let DC_MAP = (() => { try { return JSON.parse(localStorage.getItem('fb_dc') || '{}'); } catch (e){ return {}; } })();
-let currentPicks = {}, dt = null, expScope = 'live', expN = 5, expResult = null, expVisible = 0;
+let currentPicks = {}, dt = null, expScope = 'live', expN = 5, expResult = null, expVisible = 0, expRisk = { low: true, medium: false, high: false };
 const expSel = new Set(), showAllMk = new Set();
 let modalId = null;
 const MAX_KEYS = 11;
@@ -302,6 +313,7 @@ window.addEventListener('load', () => {
   const b = localStorage.getItem('fb_backend'); if (b) $('backendUrl').value = b;
   loadKeys();
   const iv = localStorage.getItem('fb_interval'); if (iv) $('intervalSelect').value = iv;
+  const trk = localStorage.getItem('fb_tracker'); if (trk) $('trackerUrl').value = trk;
 
   $('backendUrl').addEventListener('change', saveConfig);
   $('modelSelect').addEventListener('change', saveConfig);
@@ -342,6 +354,7 @@ function saveConfig(){
   localStorage.setItem('fb_backend', $('backendUrl').value.trim());
   localStorage.setItem('fb_model', $('modelSelect').value);
   localStorage.setItem('fb_interval', $('intervalSelect').value);
+  localStorage.setItem('fb_tracker', ($('trackerUrl').value || '').trim());
 }
 
 function togglePause(){
@@ -616,7 +629,7 @@ function processData(data){
   }
   fresh.forEach(m => finishedStore.delete(m.id));
   updateTracking(fresh, !prevReal.length || fresh.length >= prevReal.length * 0.5);
-  startupDone = true; maybeResolve();
+  startupDone = true; maybeResolve(); syncTracker(false, fresh);
   renderStats();
   while (finishedStore.size > 150) finishedStore.delete(finishedStore.keys().next().value);
 
@@ -828,7 +841,7 @@ function renderMatches(){
   if (currentStatusTab === 'history'){ container.innerHTML = renderHistory(); return; }
   if (currentStatusTab === 'analyses'){ container.innerHTML = renderAnalyses(); return; }
   if (currentStatusTab === 'top'){ container.innerHTML = renderTop(base); return; }
-  if (currentStatusTab === 'express'){ const list = expCandidates(); expVisible = list.length; container.innerHTML = renderExpressList(list); updateExInfo(); return; }
+  if (currentStatusTab === 'express'){ const list = expCandidates(); expVisible = list.length; container.innerHTML = renderExpressList(list); updateExInfo(); updateExFilters(); return; }
 
   let list = base.filter(m => m.status === currentStatusTab);
   if (currentStatusTab === 'upcoming') list = list.slice().sort((a, b) => (a.start || 9e12) - (b.start || 9e12));
@@ -919,10 +932,10 @@ function mkBlock(key, title, html, def){
 }
 
 function myBetsBox(m){
-  const mine = preds.filter(p => p.src === 'single' && !p.virtual && p.mid === String(m.id));
+  const mine = preds.filter(p => p.mid === String(m.id) && (p.src === 'express' || !p.virtual));
   if (!mine.length) return '';
-  return `<div class="ai-box"><div class="ai-legend">⭐ Мои ставки на этот матч (слежу автоматически)</div>` + mine.map(p =>
-    `<div class="bet ${p.risk}"><div class="bet-top"><b>${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b><span class="bet-who">→ ${esc(p.desc)}</span><span class="bet-odd">кэф ${esc(p.odd)}</span></div><div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div></div>`).join('') + `</div>`;
+  return `<div class="ai-box"><div class="ai-legend">⭐ Мои ставки на этот матч (слежу автоматически)</div><div class="tl">${liveLine({ mid: String(m.id) })}</div>` + mine.map(p =>
+    `<div class="bet ${p.risk}"><div class="bet-top"><b>${p.src === 'express' ? '🎯 ' : '⭐ '}${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b><span class="bet-who">→ ${esc(p.desc)}</span><span class="bet-odd">кэф ${esc(p.odd)}</span></div><div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div>${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}</div>`).join('') + `</div>`;
 }
 
 function renderDetails(m){
@@ -982,6 +995,7 @@ function onContainerClick(e){
   const hv = e.target.closest('[data-hv]'); if (hv){ histView = hv.dataset.hv; renderMatches(); return; }
   const hr = e.target.closest('[data-hr]'); if (hr){ histRes = hr.dataset.hr; renderMatches(); return; }
   const ha = e.target.closest('[data-hact]'); if (ha){ handleHistAct(ha); return; }
+  const om = e.target.closest('[data-omid]'); if (om && !e.target.closest('button, summary, details, a')){ openMatchModal(om.dataset.omid); return; }
   const act = e.target.closest('[data-act]');
   if (act){
     if (act.dataset.act === 'more'){ const k = act.dataset.sport; sportLimit[k] = (sportLimit[k] || 40) + 40; renderMatches(); return; }
@@ -1027,6 +1041,7 @@ function onContainerClick(e){
 /* Раз в секунду: таймеры матчей и обратный отсчёт обновления */
 function tick(){
   document.querySelectorAll('.live-timer').forEach(el => { const m = matchById[el.dataset.id]; if (m) el.textContent = fmtTimer(m, false); });
+  document.querySelectorAll('.cd').forEach(el => { const m = matchById[el.dataset.id]; if (m){ const c = cdText(m); if (c) el.textContent = c; } });
   document.querySelectorAll('.timer-full').forEach(el => { const m = matchById[el.dataset.id]; if (m) el.textContent = fmtTimer(m, true); });
   setSync();
 }
@@ -1138,6 +1153,7 @@ function initSettings(){
   });
   $('keyCheckAll').addEventListener('click', checkAllKeys);
   $('backendUrl').addEventListener('change', () => { saveConfig(); loadOdds(); });
+  $('trackerUrl').addEventListener('change', () => { saveConfig(); lastWatchKey = ''; syncTracker(true); });
   let wake = null;
   const setWake = async on => {
     try {
@@ -1160,7 +1176,7 @@ async function loadModels(){
   st.className = 'key-status'; st.textContent = '⏳ Проверяю ключ...';
   try {
     const { data, key } = await geminiFetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', {});
-    if (data.error){ st.className = 'key-status bad'; st.textContent = '❌ ' + data.error.message; return; }
+    if (data.error){ st.className = 'key-status bad'; st.textContent = '❌ ' + data.error.message + (/location/i.test(data.error.message) ? ' Gemini недоступен из вашего региона или через текущий VPN: смените страну VPN.' : ''); return; }
     const models = (data.models || [])
       .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
       .map(m => m.name.replace('models/', ''))
@@ -1336,6 +1352,14 @@ function expCandidates(){
   const q = $('searchInput').value.trim().toLowerCase();
   return parsedMatches.filter(m => passSearch(m, q) && (currentSport === 'all' || m.sportKey === currentSport) && expScopeOk(m));
 }
+function updateExFilters(){
+  const d = readDt(), mode = $('dateMode').value;
+  const sp = currentSport === 'all' ? 'все виды спорта' : ((parsedMatches.find(m => m.sportKey === currentSport) || {}).sport || currentSport);
+  const dateTxt = d.day ? d.day.split('-').reverse().join('.') : 'любая дата';
+  const timeTxt = (d.from !== null || d.to !== null) ? ` · время ${$('timeFrom').value || '00:00'}–${$('timeTo').value || '23:59'}` : '';
+  $('exFilters').textContent = `Сейчас в экспресс попадут: ${sp} · ${dateTxt}${timeTxt}. Вид спорта, дата и время меняются в строках выше (там же можно задать время «с–до»).`;
+  document.querySelectorAll('#expressPanel [data-qd]').forEach(b => b.classList.toggle('active', b.dataset.qd === mode));
+}
 function updateExInfo(){
   const k = [...expSel].filter(id => matchById[id] && matchById[id].status !== 'finished').length;
   $('exInfo').textContent = k ? `Выбрано вручную: ${k} (нужно от 3 до 30). Ползунок в этом режиме не используется.`
@@ -1371,6 +1395,7 @@ function renderExpressResult(){
   if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 async function buildExpress(){
+  const allowedRisk = Object.keys(expRisk).filter(k => expRisk[k]);
   const cands = expCandidates();
   const sel = [...expSel].map(id => matchById[id]).filter(m => m && m.status !== 'finished' && Object.keys(m.odds).length);
   const auto = !sel.length;
@@ -1385,7 +1410,7 @@ async function buildExpress(){
   }
   expResult = { state:'loading' }; renderExpressResult();
   const lines = list.map(m => `[id=${m.id}] ${m.league} | ${m.team1} — ${m.team2} | ${m.status === 'live' ? 'LIVE ' + fmtTimer(m, false) + ', счёт ' + m.score : 'начало ' + fmtStart(m)} | коэф: ${JSON.stringify(Object.fromEntries(Object.entries(m.odds).slice(0, 12)))}`).join('\n');
-  const prompt = `Собери экспресс из ${n} событий. ${auto ? 'Выбери из списка РОВНО ' + n + ' событий' : 'Используй ВСЕ ' + n + ' событий из списка'}, для каждого дай ОДНУ ставку: наиболее вероятный и нерискованный исход (market — точное название из коэффициентов этого события, например П1, X, П2, Ф1(0), ТБ(2.5)). Не бери рискованные ставки без веской причины.\nСобытия:\n${lines}\n\nОтветь ТОЛЬКО JSON: {"summary":"1-2 предложения о логике экспресса","legs":[{"id":число из списка,"market":"...","risk":"low|medium|high","reason":"кратко, называй команды по названию, а не П1/П2"}]}. Русский язык.`;
+  const prompt = `Собери экспресс из ${n} событий. ${auto ? 'Выбери из списка РОВНО ' + n + ' событий' : 'Используй ВСЕ ' + n + ' событий из списка'}, для каждого дай ОДНУ ставку: наиболее вероятный и нерискованный исход (market — точное название из коэффициентов этого события, например П1, X, П2, Ф1(0), ТБ(2.5)). Разрешённые уровни риска ставок: ${allowedRisk.join(', ')} (low — надёжная, medium — средний риск, high — рискованная). ${auto ? 'Выбирай ТОЛЬКО ставки этих уровней; если для события такой ставки нет, не включай его.' : 'По возможности выбирай ставки этих уровней.'}\nСобытия:\n${lines}\n\nОтветь ТОЛЬКО JSON: {"summary":"1-2 предложения о логике экспресса","legs":[{"id":число из списка,"market":"...","risk":"low|medium|high","reason":"кратко, называй команды по названию, а не П1/П2"}]}. Русский язык.`;
   try {
     const d = parseBets(await geminiRequest(prompt, true));
     const seen = new Set(), legs = [];
@@ -1397,8 +1422,8 @@ async function buildExpress(){
       legs.push({ id: m.id, market: key || String(l.market || ''), desc: describeBet(m, key || l.market), odd, risk: ['low', 'medium', 'high'].includes(l.risk) ? l.risk : 'medium', reason: l.reason || '',
         title: `${m.sportIcon} ${m.league} · ${m.team1} — ${m.team2} (${m.status === 'live' ? '🔴 ' + m.score : fmtStart(m)})` });
     });
-    const used = legs.slice(0, n);
-    if (!used.length) throw new Error('⚠️ ИИ не вернул распознаваемых ставок. Попробуйте ещё раз.');
+    const used = (auto ? legs.filter(l => allowedRisk.includes(l.risk)) : legs).slice(0, n);
+    if (!used.length) throw new Error(legs.length ? '⚠️ ИИ предложил ставки только другого уровня риска. Разрешите больше уровней риска или повторите.' : '⚠️ ИИ не вернул распознаваемых ставок. Попробуйте ещё раз.');
     const total = used.reduce((p, l) => p * l.odd, 1);
     saveExpress(used, (d && d.summary) || '', total);
     expResult = { state:'done', legs: used, total, summary: (d && d.summary) || '', at: Date.now() };
@@ -1421,6 +1446,14 @@ function initExpress(){
     expSel.clear(); [...document.querySelectorAll('.ex-cb')].slice(0, 30).forEach(cb => expSel.add(cb.dataset.id)); rerender();
   });
   $('exBuild').addEventListener('click', buildExpress);
+  document.querySelectorAll('#expressPanel [data-risk]').forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.risk, next = Object.assign({}, expRisk, { [k]: !expRisk[k] });
+    if (!Object.values(next).some(Boolean)) return;
+    expRisk = next; b.classList.toggle('active', expRisk[k]);
+  }));
+  document.querySelectorAll('#expressPanel [data-qd]').forEach(b => b.addEventListener('click', () => {
+    $('dateMode').value = b.dataset.qd; $('dateMode').dispatchEvent(new Event('change'));
+  }));
   $('matchesContainer').addEventListener('change', e => {
     const cb = e.target.closest('.ex-cb'); if (!cb) return;
     if (cb.checked) expSel.add(cb.dataset.id); else expSel.delete(cb.dataset.id);
@@ -1445,17 +1478,31 @@ function refreshMatchModal(){
   const m = matchById[modalId];
   $('matchModalBody').innerHTML = m
     ? cardHtml(m, true).replace('class="details "', 'class="details open"').replace(/<button class="btn-analyze-match"[\s\S]*?<\/button>/, '')
-    : '<div class="status-msg">Матч уже недоступен (завершён или убран из линии).</div>';
+    : savedMatchHtml(modalId);
+}
+/* Карточка матча, которого уже нет в линии: сохранённые данные, ход матча и мои ставки */
+function savedMatchHtml(mid){
+  mid = String(mid);
+  const all = preds.filter(p => p.mid === mid), mine = all.filter(p => p.src === 'express' || !p.virtual);
+  const base = all[0], A = analyses.filter(a => a.mid === mid).slice(-1)[0];
+  if (!base && !A) return '<div class="status-msg">Данных по этому матчу нет.</div>';
+  const t1 = base ? base.t1 : A.t1, t2 = base ? base.t2 : A.t2, league = base ? base.league : A.league, icon = base ? base.icon : A.icon;
+  const ms = (base && base.ms) || (A && A.ms);
+  const tl = A && A.timeline ? A.timeline.map(x => `${x.min ? x.min + ' ' : ''}<b>${esc(x.score)}</b>`).join(' → ') : '';
+  return `<div class="hx"><div class="hx-head"><b>${icon || ''} ${esc(t1)} — ${esc(t2)}</b></div>
+    <div class="hx-sub">${esc(league)}${ms ? ' · начало ' + fmtDT(ms * 1000) : ''} · сейчас этого матча нет в линии</div>
+    ${A ? `<div class="tl">Ход матча: ${tl}${A.final ? ` → итог <b>${esc(A.final)}</b> 🏁` : ''}</div>` : ''}
+    ${(mine.length ? mine : all).map(legHtml).join('')}</div>`;
 }
 function openMatchModal(id){
   const m = matchById[String(id)];
-  if (!m){ toast('Матч уже недоступен'); return; }
-  if (!aiResults[m.id] && expResult && expResult.state === 'done'){
+  if (!m && !preds.some(p => p.mid === String(id)) && !analyses.some(a => a.mid === String(id))){ toast('Матч уже недоступен'); return; }
+  if (m && !aiResults[m.id] && expResult && expResult.state === 'done'){
     const leg = expResult.legs.find(l => String(l.id) === String(m.id));
     if (leg) aiResults[m.id] = { state:'done', raw:'', at: expResult.at, score: m.score,
       data: { summary: 'Ставка из экспресса. Нажмите «Пересчитать», чтобы получить полный разбор матча.', bets: [{ market: leg.market, risk: leg.risk, reason: leg.reason }] } };
   }
-  modalId = String(m.id);
+  modalId = String(id);
   $('matchModal').style.display = 'flex';
   refreshMatchModal();
   renderMatches();
@@ -1467,6 +1514,7 @@ function initMatchModal(){
   modal.addEventListener('click', e => { if (e.target === modal) close(); });
   $('matchModalBody').addEventListener('click', e => {
     const ca = e.target.closest('[data-cact]'); if (ca){ handleConfirm(ca); return; }
+    const ha2 = e.target.closest('[data-hact]'); if (ha2){ handleHistAct(ha2); return; }
     const card = e.target.closest('.match-card'); if (!card) return;
     const act = e.target.closest('[data-act]');
     if (act){
@@ -1578,11 +1626,18 @@ function evalEarly(p, t){
 function explainPred(p){
   if (!p.final || p.state === 'pending' || p.state === 'unknown') return '';
   const [a, b] = String(p.final).split(':').map(Number); if (isNaN(a) || isNaN(b)) return '';
-  const lbl = p.sub ? p.sub + ': ' : '', mm = String(p.market).match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/);
-  if (p.early) return `${lbl}условие выполнено уже при счёте ${p.final}`;
-  if (mm && (mm[1] === 'ТБ' || mm[1] === 'ТМ')) return `${lbl}итог ${p.final}, всего ${a + b} (линия ${mm[2]})`;
-  if (mm){ const h = parseFloat(String(mm[2]).replace(',', '.')); return `${lbl}итог ${p.final}; с форой ${mm[2]}: ${mm[1] === 'Ф1' ? +(a + h).toFixed(2) + ':' + b : a + ':' + +(b + h).toFixed(2)}`; }
-  return `${lbl}итог ${p.final}`;
+  const k = String(p.market), t1 = p.t1, t2 = p.t2;
+  const verdict = p.state === 'won' ? '✅ ставка зашла' : p.state === 'lost' ? '❌ ставка не зашла' : '↩️ возврат ставки';
+  const src = p.via === 'search' ? ' (по данным интернета)' : p.via === 'server' ? ' (данные сервера слежения)' : '';
+  if (p.early) return `${p.sub ? '«' + p.sub + '»: ' : ''}условие выполнено уже при счёте ${p.final} → ${verdict}${src}`;
+  const sc = p.sub ? `«${p.sub}»: ${a}:${b}` : `итог ${t1} ${a}:${b} ${t2}`;
+  const win = a > b ? `победил ${t1}` : b > a ? `победил ${t2}` : 'ничья';
+  const mm = k.match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/);
+  let why = '';
+  if (/^(П1|П2|X|1X|X2|12)$/.test(k)) why = p.sub ? '' : win;
+  else if (mm && (mm[1] === 'ТБ' || mm[1] === 'ТМ')) why = `всего ${a + b}, линия ${mm[2]} (${mm[1] === 'ТБ' ? 'нужно больше' : 'нужно меньше'})`;
+  else if (mm){ const h = parseFloat(String(mm[2]).replace(',', '.')); why = `с форой ${mm[2]} счёт ${+(mm[1] === 'Ф1' ? a + h : a).toFixed(2)}:${+(mm[1] === 'Ф1' ? b : b + h).toFixed(2)}`; }
+  return `${sc}${why ? ' — ' + why : ''} → ${verdict}${src}`;
 }
 function settleMatch(mid, how){
   const t = track[mid]; if (!t) return;
@@ -1650,7 +1705,7 @@ function recordAnalysis(m){
   const oldIds = new Set(old.map(a => a.aid));
   analyses = analyses.filter(a => !oldIds.has(a.aid)); preds = preds.filter(p => !(p.virtual && oldIds.has(p.aid)));
   const r = aiResults[m.id];
-  const A = { aid: uid('a'), mid: String(m.id), t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon, at: Date.now(), score: m.score,
+  const A = { aid: uid('a'), mid: String(m.id), t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon, at: Date.now(), score: m.score, ms: m.start || 0,
     summary: (r && r.data && r.data.summary) || '', bets: [], timeline: [{ t: Date.now(), min: m.status === 'live' ? fmtTimer(m, false) : '', score: m.score }], final: null, ended: null };
   es.forEach(e => {
     const sb = e.sub >= 0 ? m.subs[e.sub] : null;
@@ -1724,8 +1779,8 @@ function analysisCard(A){
   const rows = hasMine ? mine : all, others = hasMine ? all.filter(x => !isMine(x.b)) : [];
   const pending = rows.some(x => { const p = predOf(x.b); return p && p.state === 'pending'; });
   const tl = (A.timeline || []).map(x => `${x.min ? x.min + ' ' : ''}<b>${esc(x.score)}</b>`).join(' → ');
-  let h = `<div class="hx"><div class="hx-head"><b>${A.icon || ''} ${esc(A.t1)} — ${esc(A.t2)}</b><span class="hx-sub" style="margin:0">${hasMine ? `⭐ Мои ставки: ${mine.length} · ` : ''}${fmtDT(A.at)}</span></div>
-    <div class="hx-sub">${esc(A.league)} · сейчас: ${liveLine({ mid: A.mid, final: A.final })}</div>
+  let h = `<div class="hx"><div class="hx-head" data-omid="${esc(A.mid)}"><b>${A.icon || ''} ${esc(A.t1)} — ${esc(A.t2)} <span class="open-hint">· открыть ›</span></b><span class="hx-sub" style="margin:0">${hasMine ? `⭐ Мои ставки: ${mine.length} · ` : ''}${fmtDT(A.at)}</span></div>
+    <div class="hx-sub">${esc(A.league)} · сейчас: ${liveLine({ mid: A.mid, final: A.final, ms: A.ms })}</div>
     ${pending ? '<div class="mon">👁 Слежу за матчем автоматически</div>' : ''}
     ${!hasMine && A.summary ? `<div class="ai-sum">${esc(A.summary)}</div>` : ''}
     <div class="tl">Ход матча: ${tl}${A.ended ? (A.final ? ` → итог <b>${esc(A.final)}</b> 🏁` : ' → итог не получен') : ''}</div>`;
@@ -1755,8 +1810,54 @@ function renderAnalyses(){
   return h;
 }
 
+/* ----- сервер слежения: ловит итоги, пока приложение закрыто ----- */
+const trackerBase = () => (($('trackerUrl') && $('trackerUrl').value) || '').trim().replace(/\/$/, '');
+function setTrackerStatus(ok, msg){
+  const el = $('trackerStatus'); if (!el) return;
+  el.style.color = ok ? 'var(--accent)' : 'var(--red)';
+  el.textContent = ok ? `✅ Сервер слежения отвечает (${clock()})` : `❌ Нет связи с сервером слежения: ${msg}`;
+}
+function applyServerResults(res){
+  let n = 0;
+  Object.entries(res).forEach(([mid, r]) => {
+    if (!r.finished) return;
+    const t = { a: Number(r.a), b: Number(r.b), subs: {} };
+    Object.entries(r.subs || {}).forEach(([name, sc]) => { t.subs[normName(name)] = { n: name, a: Number(sc.a), b: Number(sc.b) }; });
+    preds.filter(p => p.mid === String(mid) && (p.state === 'pending' || p.state === 'unknown')).forEach(p => {
+      const st = evalPred(p, t);
+      if (st === 'unknown'){ p.note = 'Сервер слежения: для этого рынка нет данных'; return; }
+      const sc = p.sub ? t.subs[normName(p.sub)] : t;
+      p.state = st; p.final = `${sc.a}:${sc.b}`; p.via = 'server'; p.early = false; p.note = ''; p.settledAt = Date.now(); n++;
+    });
+    analyses.filter(x => x.mid === String(mid) && !x.final).forEach(x => { x.final = `${t.a}:${t.b}`; x.ended = x.ended || Date.now(); x.via = 'server'; });
+    if (!preds.some(p => p.mid === String(mid) && p.state === 'pending')) delete track[String(mid)];
+  });
+  if (n){ saveStore(); renderStats(); renderAll(); }
+}
+async function syncTracker(force, fresh){
+  const base = trackerBase(); if (!base || trackerBusy) return;
+  const ids = [...new Set(preds.filter(p => p.state === 'pending' || p.state === 'unknown').map(p => p.mid))];
+  if (!ids.length) return;
+  const inFeed = fresh ? new Set(fresh.map(m => String(m.id))) : new Set(Object.keys(matchById));
+  const needGet = force || ids.some(id => !inFeed.has(id));
+  trackerBusy = true;
+  try {
+    const key = ids.slice().sort().join(',');
+    if (force || key !== lastWatchKey){
+      await fetch(base + '/watch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+      lastWatchKey = key;
+    }
+    if (needGet){
+      const r = await fetch(base + '/results?ids=' + ids.join(','), { cache: 'no-store' });
+      applyServerResults((await r.json()).results || {});
+    }
+    setTrackerStatus(true);
+  } catch (e){ setTrackerStatus(false, e.message); lastWatchKey = ''; }
+  finally { trackerBusy = false; }
+}
+
 /* ----- итоги матчей, закончившихся при закрытом приложении: ищем в интернете через Gemini (поиск Google) ----- */
-let startupDone = false, searchBusy = false, searchOff = false;
+let startupDone = false, searchBusy = false, searchOff = false, geminiDown = null, lastWatchKey = '', trackerBusy = false;
 const SEARCH_SPORTS = ['football', 'hockey', 'basket'];
 const sportOfPred = p => p.sk || ({ '⚽': 'football', '🏒': 'hockey', '🏀': 'basket' })[p.icon];
 function eligibleUnknown(force){
@@ -1765,7 +1866,12 @@ function eligibleUnknown(force){
 }
 function searchBar(){
   const n = new Set(eligibleUnknown(true).map(p => p.mid)).size;
-  return n ? `<div class="cf-row"><button class="cf-btn" data-sact="search">🔎 Узнать итоги через интернет (матчей: ${n})</button></div>` : '';
+  const unknownAny = preds.some(p => p.state === 'unknown');
+  let h = '';
+  if (geminiDown && Date.now() - geminiDown.at < 2 * 3600e3) h += `<div class="srv-note">⚠️ Поиск итогов через Gemini не работает: ${esc(/location/i.test(geminiDown.msg) ? 'Gemini недоступен из вашего региона или через текущий VPN. Смените страну VPN.' : geminiDown.msg)}</div>`;
+  if (unknownAny && !trackerBase()) h += `<div class="srv-note">Чтобы итоги ловились, пока приложение закрыто, подключите сервер слежения (⚙️, папка tracker).</div>`;
+  if (n) h += `<div class="cf-row"><button class="cf-btn" data-sact="search">🔎 Узнать итоги через интернет (матчей: ${n})</button></div>`;
+  return h;
 }
 function maybeResolve(){
   if (eligibleUnknown(false).some(p => !p.srchAt || Date.now() - p.srchAt > 30 * 60 * 1000)) resolveViaSearch(false);
@@ -1804,23 +1910,31 @@ async function resolveViaSearch(force){
       const ps = todo.filter(p => p.mid === mid), p0 = ps[0], sport = sportOfPred(p0);
       const when = new Date(p0.ms ? p0.ms * 1000 : p0.at).toLocaleDateString('ru-RU', { day:'numeric', month:'long', year:'numeric' });
       const prompt = `Найди в интернете (Google) итоговый результат уже сыгранного матча.\nВид спорта: ${sport === 'football' ? 'футбол' : sport === 'hockey' ? 'хоккей' : 'баскетбол'}. Турнир: ${p0.league}. Дата матча: ${when}.\nКоманда 1: ${p0.t1}. Команда 2: ${p0.t2}.\nВерни ТОЛЬКО JSON без пояснений: {"found":true или false,"finished":true или false,"team1":"название Команды 1 по-русски","team2":"название Команды 2 по-русски","score1":целое число,"score2":целое число,"source":"сайт"}.\nscore1 и score2 — счёт Команды 1 и Команды 2 ${sport === 'basket' ? 'по итогам матча, включая овертайм' : 'по итогам основного времени (без овертайма, дополнительного времени и пенальти)'}.\nЕсли матч не найден, не закончился или ты не уверен, верни {"found":false}. Ничего не выдумывай.`;
-      let res = null, stop = false;
+      let res = null, stop = false, apiErr = '';
       try {
         const { data } = await geminiFetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent($('modelSelect').value)}:generateContent`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], tools: [{ google_search: {} }] })
         });
         if (data.error){
-          if (/google_search|ground|tool/i.test(String(data.error.message))){ searchOff = true; stop = true; toast('Эта модель не поддерживает поиск Google. Выберите другую модель (flash) в списке.'); }
+          const em = String(data.error.message);
+          if (/google_search|ground|tool/i.test(em)){ searchOff = true; stop = true; toast('Эта модель не поддерживает поиск Google. Выберите другую модель (flash) в списке.'); }
+          else apiErr = em;
         } else {
           const cand = data.candidates && data.candidates[0];
           res = parseBets((cand && cand.content && cand.content.parts ? cand.content.parts.map(x => x.text || '').join('') : '') || '');
         }
-      } catch (err){ res = null; }
+      } catch (err){ apiErr = err.message || 'нет связи'; }
       if (stop) break;
+      if (apiErr){   // Gemini не ответил: это не «попытка поиска», счётчик не трогаем
+        geminiDown = { msg: apiErr, at: Date.now() };
+        ps.forEach(p => { p.srchAt = Date.now(); p.note = '⚠️ Gemini недоступен, поиск не выполнялся' + (/location/i.test(apiErr) ? ' (смените страну VPN)' : ''); });
+        break;
+      }
+      geminiDown = null;
       ps.forEach(p => { p.srchAt = Date.now(); p.srchN = (p.srchN || 0) + 1; });
       const v = verifyFound(res, p0);
       if (v){ applyFound(mid, v.a, v.b); ok++; }
-      else ps.forEach(p => { p.note = `Итог пока не найден в интернете (попытка ${p.srchN})`; });
+      else ps.forEach(p => { p.note = `Итог не найден в интернете (попытка ${p.srchN} из 4)`; });
     }
   } finally { searchBusy = false; saveStore(); renderStats(); renderAll(); }
   if (force) toast(ok ? `🔎 Итоги найдены: ${ok}` : 'Итоги пока не найдены');
@@ -1869,6 +1983,7 @@ function renderStats(){
 function initStats(){
   loadStore();
   preds.forEach(p => { if (p.src === 'single' && !p.aid) p.virtual = true; });
+  if (!localStorage.getItem('fb_srchfix')){ preds.forEach(p => { p.srchN = 0; p.srchAt = 0; }); localStorage.setItem('fb_srchfix', '1'); }
   $('stPeriod').addEventListener('change', () => { const c = $('stPeriod').value === 'custom'; $('stFrom').style.display = c ? '' : 'none'; $('stTo').style.display = c ? '' : 'none'; renderStats(); renderMatches(); });
   ['stFrom', 'stTo'].forEach(id => $(id).addEventListener('input', () => { renderStats(); renderMatches(); }));
   renderStats();
@@ -1876,20 +1991,56 @@ function initStats(){
 
 /* ----- вкладка «Мои экспрессы» ----- */
 const fmtDT = ts => new Date(ts).toLocaleString([], { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+/* Обратный отсчёт до конца матча (оценка). Футбол: по таймеру Fonbet. Другие виды спорта: по типичной длительности от начала */
+const DUR = { football: 6600, hockey: 9000, basket: 8100, volley: 6300 };
+function timerNow(m){
+  const e = (Date.now() - m.timerAt) / 1000;
+  return Math.max(0, m.timerSeconds + (m.timerDir === 1 ? e : m.timerDir === 2 ? -e : 0));
+}
+function endEstimate(m){
+  if (m.status === 'live' && m.sportKey === 'football' && m.timerSeconds !== null && m.timerSeconds !== undefined){
+    const el = timerNow(m);
+    if (el >= 5400) return { added: true };
+    const inBreak = /перерыв/i.test(m.comment || '') || (m.timerDir === 0 && el >= 2640 && el <= 2760);
+    let rem = 5400 - el;
+    if (inBreak) rem += 600; else if (el < 2700) rem += 900;
+    rem += el < 2700 ? 360 : 240;           // добавленное время (оценка)
+    return { secs: rem };
+  }
+  const dur = DUR[m.sportKey];
+  if ((m.status === 'live' || m.status === 'upcoming') && m.start && dur){
+    const end = (m.start + dur) * 1000;
+    return end > Date.now() ? { at: end } : { late: true };
+  }
+  return null;
+}
+function cdText(m){
+  const est = endEstimate(m); if (!est) return '';
+  if (est.added) return 'идёт добавленное время';
+  if (est.late) return 'идёт дольше обычного';
+  if (est.secs !== undefined){
+    const sec = Math.max(0, Math.round(est.secs)), h = Math.floor(sec / 3600), mi = Math.floor(sec % 3600 / 60), se = sec % 60;
+    return h ? `до конца ≈ ${h} ч ${mi} мин` : `до конца ≈ ${pad(mi)}:${pad(se)}`;
+  }
+  return `конец ≈ ${new Date(est.at).toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' })}`;
+}
+const cdSpan = m => { const c = cdText(m); return c ? ` · ⏳ <span class="cd" data-id="${esc(m.id)}">${esc(c)}</span>` : ''; };
+
 function liveLine(p){
   const m = matchById[p.mid];
   if (m){
-    if (m.status === 'live') return `🔴 <span class="live-timer" data-id="${esc(m.id)}">${esc(fmtTimer(m, false))}</span> · ${esc(m.score)}`;
-    if (m.status === 'upcoming') return `📅 ${esc(fmtStart(m))}`;
-    return `🏁 ${esc(m.score)}`;
+    if (m.status === 'live') return `🔴 <span class="live-timer" data-id="${esc(m.id)}">${esc(fmtTimer(m, false))}</span> · ${esc(m.score)}${cdSpan(m)}`;
+    if (m.status === 'upcoming') return `📅 ${esc(fmtStart(m))}${cdSpan(m)}`;
+    return `🏁 ${esc(p.final || m.score)}`;
   }
-  return p.final ? `🏁 итог ${esc(p.final)}` : '<span style="color:var(--muted)">нет в линии</span>';
+  const st0 = p.ms ? `🕒 начало ${fmtDT(p.ms * 1000)}` : '';
+  return p.final ? `🏁 итог ${esc(p.final)}${st0 ? ' · ' + st0 : ''}` : `${st0 ? st0 + ' · ' : ''}<span style="color:var(--muted)">нет в линии</span>`;
 }
 function manualBtns(p){
   return `<div class="hx-man">Отметить:` + [['won', '✅'], ['lost', '❌'], ['void', '↩️']].map(([s2, ic]) => `<button data-hact="set" data-pid="${esc(p.pid)}" data-st="${s2}" class="${p.state === s2 ? 'on' : ''}">${ic}</button>`).join('') + `</div>`;
 }
 function legHtml(p){
-  return `<div class="hx-leg ${p.state}"><div class="hx-m">${p.icon || ''} ${esc(p.t1)} — ${esc(p.t2)}</div>
+  return `<div class="hx-leg ${p.state}" data-omid="${esc(p.mid)}"><div class="hx-m">${p.icon || ''} ${esc(p.t1)} — ${esc(p.t2)} <span class="open-hint">· открыть ›</span></div>
     <div class="hx-b"><b>${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b> → ${esc(p.desc)} · кэф ${esc(p.odd)} · ${RISK[p.risk] || ''}</div>
     <div class="hx-l">${liveLine(p)} <span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div>
     ${p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}${p.state !== 'pending' ? `<details class="man"><summary>Исправить вручную</summary>${manualBtns(p)}</details>` : ''}</div>`;
@@ -1901,7 +2052,7 @@ function expCard(ex, pm, no){
   const BADGE = { won:'✅ ЗАШЁЛ', lost:'❌ НЕ ЗАШЁЛ', pending:'⏳ В игре', unknown:'⚠️ Итог не получен', void:'↩️ Возврат' };
   return `<div class="hx ${st}"><div class="hx-head"><b>Экспресс #${no} · ${legs.length} событий · ${fmtDT(ex.at)}</b><span class="hx-badge">${BADGE[st]}</span></div>
     <div class="hx-sub">Общий кэф ≈ ${odds.toFixed(2)}${legs.filter(l => l.state === 'won').length ? ` · зашло ${legs.filter(l => l.state === 'won').length} из ${legs.length}` : ''}</div>
-    ${lost.length ? `<div class="hx-lost">❌ Не зашло (${lost.length}): ${lost.map(l => esc(l.t1 + ' — ' + l.t2 + ' (' + l.market + ')')).join('; ')}</div>` : ''}
+    ${lost.length ? `<div class="hx-lost">❌ Не зашло (${lost.length}):<br>${lost.map(l => '• ' + esc(l.t1 + ' — ' + l.t2 + ': ставка ' + l.market + ' (' + (l.desc || '') + '). ' + (explainPred(l) || ''))).join('<br>')}</div>` : ''}
     ${legs.map(legHtml).join('')}<button class="hx-del" data-hact="delex" data-eid="${esc(ex.eid)}">🗑 Удалить</button></div>`;
 }
 function breakdownHtml(ps){
@@ -1937,7 +2088,7 @@ function handleHistAct(b){
   } else if (a === 'delpred'){
     preds = preds.filter(p => p.pid !== b.dataset.pid);
   }
-  saveStore(); renderStats(); renderMatches();
+  saveStore(); renderStats(); renderAll();
 }
 
 function analyzeTopLine(){
