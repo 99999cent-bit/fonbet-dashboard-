@@ -709,7 +709,7 @@ function processData(data){
   }
   fresh.forEach(m => finishedStore.delete(m.id));
   updateTracking(fresh, !prevReal.length || fresh.length >= prevReal.length * 0.5);
-  startupDone = true; maybeResolve(); syncTracker(false, fresh);
+  startupDone = true; syncResults(false).then(maybeResolve); syncTracker(false, fresh);
   renderStats();
   while (finishedStore.size > 150) finishedStore.delete(finishedStore.keys().next().value);
 
@@ -2124,6 +2124,64 @@ async function syncTracker(force, fresh){
   finally { trackerBusy = false; }
 }
 
+
+/* ----- итоги прямо с Фонбета (раздел «Результаты»): работает без сервера, даже если приложение было закрыто ----- */
+const FB_RES_HOSTS = ['https://clientsapi-vk02-w.bk6bba-resources.ru', 'https://clientsapi-vk01-w.bk6bba-resources.ru', 'https://clientsapi-lb54-w.bk6bba-resources.com', 'https://clientsapi-lb61-w.bk6bba-resources.com'];
+let lastResHost = '', resBusy = false, resLastAt = 0, resInfo = '';
+const mskDate = ms => new Date(ms + 3 * 3600e3).toISOString().slice(0, 10);
+const SUB_TITLES = { 'тайм': i => `${i}-й тайм`, 'четверть': i => `${i}-я четверть`, 'период': i => `${i}-й период`, 'сет': i => `${i}-й сет`, 'карта': i => `${i}-я карта`, 'гейм': i => `${i}-й гейм` };
+/* ответ results/v2/getByDate → формат слежения {id:{finished,a,b,subs}} для нужных матчей */
+function resultsToTrack(j, ids){
+  const want = new Set(ids.map(String)), miscs = new Map((j.eventMiscs || []).map(m => [String(m.id), m])), kids = new Map(), out = {};
+  (j.events || []).forEach(ev => { if (ev.parentId){ const k = String(ev.parentId); if (want.has(k)){ if (!kids.has(k)) kids.set(k, []); kids.get(k).push(ev); } } });
+  (j.events || []).forEach(ev => {
+    const id = String(ev.id); if (!want.has(id) || ev.parentId) return;
+    const mi = miscs.get(id); if (!mi) return;
+    if (ev.status === 4){ out[id] = { finished: false, cancelled: true }; return; }   // матч отменён или не состоялся
+    const subs = {};
+    (mi.subScores || []).forEach((ss, i) => { const f = SUB_TITLES[String(ss.title || '').toLowerCase()]; if (f && ss.score1 !== undefined) subs[f(i + 1)] = { a: Number(ss.score1), b: Number(ss.score2) }; });
+    (kids.get(id) || []).forEach(sb => { const sm = miscs.get(String(sb.id)); if (sb.name && sm && sm.score1 !== undefined) subs[sb.name] = { a: Number(sm.score1), b: Number(sm.score2) }; });
+    out[id] = { finished: true, a: Number(mi.score1), b: Number(mi.score2), subs, seenLive: true };
+  });
+  return out;
+}
+async function fetchResultsDay(day){
+  const hosts = lastResHost ? [lastResHost, ...FB_RES_HOSTS.filter(h => h !== lastResHost)] : FB_RES_HOSTS;
+  let last = 'нет ответа';
+  for (const h of hosts){
+    try {
+      const r = await fetch(`${h}/results/v2/getByDate?lang=ru&lineDate=${day}&scopeMarket=1600`, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d && Array.isArray(d.events)){ lastResHost = h; return d; }
+      throw new Error('нет списка событий');
+    } catch (e){ last = e.message; }
+  }
+  throw new Error(last);
+}
+async function syncResults(force){
+  if (resBusy || (!force && Date.now() - resLastAt < 2 * 60e3)) return;
+  const now = Date.now();
+  const open = preds.filter(p => (p.state === 'pending' || p.state === 'unknown') && 
+    (!matchById[p.mid] || matchById[p.mid].status === 'finished') && (!p.ms || (p.ms < 1e12 ? p.ms * 1000 : p.ms) < now - 20 * 60e3));
+  if (!open.length) return;
+  resBusy = true; resLastAt = now;
+  try {
+    const days = new Set(), ids = [...new Set(open.map(p => p.mid))];
+    open.forEach(p => { const ms = p.ms ? (p.ms < 1e12 ? p.ms * 1000 : p.ms) : p.at; days.add(mskDate(ms)); days.add(mskDate(ms + 864e5)); });
+    const list = [...days].filter(d => d <= mskDate(now)).sort().slice(-4);
+    let found = {}, ok = 0, err = '';
+    for (const day of list){
+      try { const j = await fetchResultsDay(day); ok++; Object.assign(found, resultsToTrack(j, ids.filter(id => !(id in found)))); }
+      catch (e){ err = e.message; }
+    }
+    Object.entries(found).forEach(([mid, r]) => { if (r.cancelled) open.filter(p => p.mid === mid).forEach(p => { p.note = 'Фонбет: матч отменён или не состоялся (ставка обычно возвращается). Если нужно, отметьте вручную.'; }); });
+    applyServerResults(Object.fromEntries(Object.entries(found).filter(([, r]) => r.finished)));
+    resInfo = ok ? `итоги с Фонбета проверены ${clock()}: найдено ${Object.keys(found).length} из ${ids.length}` : `итоги с Фонбета недоступны: ${err}`;
+  } catch (e){ resInfo = 'итоги с Фонбета: ' + e.message; }
+  finally { resBusy = false; }
+}
+
 /* ----- итоги матчей, закончившихся при закрытом приложении: ищем в интернете через Gemini (поиск Google) ----- */
 let startupDone = false, searchBusy = false, searchOff = false, geminiDown = null, lastWatchKey = '', lastWatchAt = 0, trackerBusy = false, backendNoTrack = false, trackerOk = false;
 const SEARCH_SPORTS = ['football', 'hockey', 'basket'];
@@ -2142,6 +2200,7 @@ function searchBar(){
   const n = new Set(eligibleUnknown(true).map(p => p.mid)).size;
   const unknownAny = preds.some(p => p.state === 'unknown');
   let h = '';
+  if (resInfo) h += `<div class="hint" style="text-align:left">📋 ${esc(resInfo)}</div>`;
   if (geminiDown && Date.now() - geminiDown.at < 2 * 3600e3) h += `<div class="srv-note">⚠️ Поиск итогов через Gemini не работает: ${esc(friendlyGemini(geminiDown.msg))}</div>`;
   if (unknownAny && !trackerOk) h += `<div class="srv-note">Слежение за итогами на сервере пока не работает: обновите бэкенд (server.js и tracker-core.js на GitHub). Без него итоги ловятся, только пока приложение открыто.</div>`;
   if (n) h += `<div class="cf-row"><button class="cf-btn" data-sact="search">🔎 Узнать итоги через интернет (матчей: ${n})</button></div>`;
