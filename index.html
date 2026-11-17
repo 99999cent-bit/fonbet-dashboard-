@@ -1526,7 +1526,7 @@ function toggleBetDetail(bt){
   dv.classList.toggle('open', betOpen.has(k));
 }
 function factsHtml(r, d){
-  const mode = r.mode === 'deep' ? '🧠 Глубокий анализ (с поиском в интернете)' : '⚡ Быстрый анализ' + (r.fellBack ? ' (поиск недоступен: лимит или модель не поддерживает)' : '');
+  const mode = r.mode === 'deep' ? '🧠 Глубокий анализ (с поиском в интернете)' : '⚡ Быстрый анализ' + (r.fellBack ? ' (глубокий не получился: ' + (r.fbWhy || 'лимит или модель не поддерживает поиск') + ')' : '');
   const q = d && d.data_quality ? ' · качество данных: ' + ({ high:'высокое', medium:'среднее', low:'низкое' }[d.data_quality] || d.data_quality) : '';
   let h = `<div class="ai-foot" style="margin:0 0 4px">${esc(mode + q)}</div>`;
   if (d && Array.isArray(d.facts) && d.facts.length) h += `<div class="why" style="margin:4px 0 8px"><b>Что учтено:</b><br>` + d.facts.slice(0, 8).map(f => '• ' + esc(f)).join('<br>') + `</div>`;
@@ -1575,18 +1575,18 @@ async function analyzeSingleMatch(id, force){
   if (cur && (cur.state === 'loading' || (cur.state === 'done' && !force))) return;
   aiResults[id] = { state:'loading' }; renderAll();
   const deepWanted = $('anMode').value === 'deep', withDetail = $('detailChk').checked;
-  let mode = deepWanted ? 'deep' : 'quick', raw = '', sources = [];
+  let mode = deepWanted ? 'deep' : 'quick', raw = '', sources = []; let fbWhy = '';
   try {
     try {
       raw = await geminiRequest(buildAnalysisPrompt(m, deepWanted, withDetail), !deepWanted, deepWanted);
       if (deepWanted) sources = lastGrounding.slice(0, 6);
     } catch (err){
       if (deepWanted && /quota|exceed|resource_exhausted|429|google_search|ground|tool/i.test(String(err.message))){
-        mode = 'quick'; sources = [];
+        mode = 'quick'; sources = []; fbWhy = String(err.message).slice(0, 160);
         raw = await geminiRequest(buildAnalysisPrompt(m, false, withDetail), true, false);
       } else throw err;
     }
-    aiResults[id] = { state:'done', raw, data: parseBets(raw), at: Date.now(), score: m.score, mode, sources, fellBack: deepWanted && mode === 'quick' };
+    aiResults[id] = { state:'done', raw, data: parseBets(raw), at: Date.now(), score: m.score, mode, sources, fellBack: deepWanted && mode === 'quick', fbWhy };
     const A = recordAnalysis(m); if (A) aiResults[id].aid = A.aid;
   } catch (err){ aiResults[id] = { state:'error', text: err.message }; }
   renderAll();
