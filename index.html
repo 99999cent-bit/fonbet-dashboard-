@@ -21,7 +21,23 @@ body{background:var(--bg);color:var(--text);padding:12px;max-width:900px;margin:
 .input-group input,.input-group select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px}
 .btn-check{margin-top:6px;width:100%;background:transparent;color:var(--accent);border:1px solid var(--accent);padding:6px;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer}
 .key-status{font-size:11.5px;margin-top:5px;line-height:1.35;word-break:break-word}
-.ok{color:var(--accent)}.bad{color:var(--red)}
+.ok{color:var(--accent)}.bad{color:var(--red)}.good{color:var(--accent)}.muted{color:var(--muted)}
+.stake-box{display:inline-flex;align-items:center;gap:4px;font-size:12px;flex-wrap:wrap}
+.stake-in{width:84px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 7px;border-radius:6px;font-size:13px}
+.stake-win{color:var(--accent);font-weight:600}.money{font-size:12px}.money.good{color:var(--accent)}.money.bad{color:var(--red)}
+.hf{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:6px 8px;margin-bottom:8px}
+.hf select,.hf input[type=date]{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:12.5px}
+.acc{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:8px 0;background:rgba(255,255,255,.02)}
+.acc-h{font-weight:700;font-size:13px;margin-bottom:4px}.acc-row{padding:7px 0;border-top:1px solid rgba(255,255,255,.06)}
+.acc-top{display:flex;justify-content:space-between;gap:8px;font-size:12.5px}
+.acc-bar{position:relative;height:7px;background:rgba(255,255,255,.08);border-radius:4px;margin:5px 0;overflow:visible}
+.acc-bar span{display:block;height:100%;border-radius:4px}.acc-bar span.g{background:var(--accent)}.acc-bar span.r{background:var(--red)}.acc-bar span.y{background:#ffb74d}
+.acc-bar i{position:absolute;top:-3px;width:2px;height:13px;background:#000;border:1px solid #fff;border-radius:1px}
+.acc-sub{font-size:11.5px;color:var(--muted)}
+.btn-tv{display:block;text-align:center;background:#e53935;color:#fff;text-decoration:none;font-weight:700;border-radius:8px;padding:10px;margin:6px 0 8px}
+.stabs{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}.stabs button{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:6px 10px;font-size:12px;cursor:pointer}
+.stabs button.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}.stab{display:none}.stab.on{display:block}
+.sc-live.flash{animation:scflash 1.6s ease}@keyframes scflash{0%{background:#ffeb3b;color:#000}100%{background:transparent}}
 .ai-panel{background:linear-gradient(145deg,#16202a,#191d24);border:1px solid var(--accent);border-radius:10px;padding:14px;margin-bottom:12px}
 .ai-title{font-size:15px;font-weight:700;color:var(--accent);margin-bottom:8px}
 .ai-content{font-size:13.5px;line-height:1.5;color:#dfe6ed;white-space:pre-wrap;word-break:break-word}
@@ -200,7 +216,7 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
   <span id="syncText">Ожидание данных...</span>
   <span style="margin-left:auto">Авто:</span>
   <select id="intervalSelect">
-    <option value="5">5 с</option><option value="10" selected>10 с</option>
+    <option value="3">3 с</option><option value="5">5 с</option><option value="10" selected>10 с</option>
     <option value="15">15 с</option><option value="30">30 с</option><option value="60">60 с</option>
   </select>
   <button id="btnPause">⏸ Пауза</button>
@@ -272,51 +288,72 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
 <div class="modal" id="settingsModal" style="display:none">
   <div class="modal-box">
     <div class="modal-head"><b>⚙️ Настройки</b><button id="btnCloseSettings">✕</button></div>
-    <div class="d-title" style="margin-top:4px">🤖 Искусственный интеллект и ключи</div>
-    <div class="input-group"><label>Какой ИИ анализирует:</label><select id="aiProv"></select></div>
-    <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin:6px 0"><input type="checkbox" id="aiFallback" style="margin-top:3px"><span>Если у выбранного ИИ закончились ключи или лимит, пробовать другие ИИ, у которых есть ключи</span></label>
-    <div class="hint" style="text-align:left">Нажмите на название ИИ, чтобы развернуть или свернуть его ключи. «➕ Добавить ключ» добавляет новое поле. Если на ключе закончился лимит или он не работает, программа сама переходит к следующему ключу этого ИИ и запоминает рабочий. Ключи хранятся только в этом браузере.</div>
-    <div id="aiBlocks"></div>
-    <div class="d-title" style="margin-top:14px">Анализ матча и расход токенов</div>
-    <select id="anMode" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
-      <option value="math">📐 Только математика: модель по коэффициентам и архиву Фонбета, без ИИ (0 токенов)</option>
-      <option value="quick">⚡ Быстрый: аналитик ИИ без поиска в интернете (1 запрос)</option>
-      <option value="deep">🧠 Глубокий: разведчик ищет составы, травмы, новости + аналитик (2 запроса)</option>
-      <option value="max">🏆 Максимум: разведчик + аналитик дважды + критик (4–5 запросов)</option>
-    </select>
-    <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-top:8px"><input type="checkbox" id="detailChk" checked style="margin-top:3px"><span>📖 Полное обоснование по нажатию на ставку (ИИ пишет больше текста; выключите, чтобы тратить меньше токенов)</span></label>
-    <div class="hint" id="anHint" style="text-align:left"></div>
-    <div class="d-title" style="margin-top:14px">📚 Архив итогов Фонбета (статистика команд)</div>
-    <select id="arcDays" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
-      <option value="0">Выключен</option><option value="14">14 дней</option><option value="30">30 дней</option><option value="60">60 дней</option><option value="90">90 дней</option>
-    </select>
-    <div class="hint" id="arcInfo" style="text-align:left"></div>
-    <div class="hint" style="text-align:left">Приложение само скачивает итоги всех матчей Фонбета за выбранный срок и считает по ним форму, голы, таймы, отдых и рейтинг команд. Первая загрузка — около 1–2 МБ на день, дальше докачиваются только новые дни. Хранится в этом браузере.</div>
-    <div class="input-group">
-      <label>Ссылка на бэкенд Railway:</label>
-      <input type="text" id="backendUrl" value="https://fonbet-dashboard-production.up.railway.app">
+    <div class="stabs" id="stabBar"><button data-st="ai">🤖 ИИ</button><button data-st="afb">⚽ API-Football</button><button data-st="an">🧠 Анализ и ставки</button><button data-st="arc">📚 Архив</button><button data-st="src">📡 Данные</button><button data-st="watch">🔔 Слежение</button><button data-st="move">💾 Перенос</button></div>
+    <div class="stab" data-stab="ai">
+      <div class="d-title">🤖 Искусственный интеллект и ключи</div>
+      <div class="input-group"><label>Какой ИИ анализирует:</label><select id="aiProv"></select></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin:6px 0"><input type="checkbox" id="aiFallback" style="margin-top:3px"><span>Если у выбранного ИИ закончились ключи или лимит, пробовать другие ИИ, у которых есть ключи</span></label>
+      <div class="hint" style="text-align:left">Нажмите на название ИИ, чтобы развернуть или свернуть его ключи. «➕ Добавить ключ» добавляет новое поле. Если на ключе закончился лимит или он не работает, программа сама переходит к следующему ключу и запоминает рабочий. Ключи хранятся только в этом браузере.</div>
+      <div id="aiBlocks"></div>
     </div>
-    <div class="d-title" style="margin-top:14px">Источник данных</div>
-    <select id="srcMode" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
-      <option value="auto">Авто: сначала мой сервер, если не отвечает, то напрямую с Fonbet</option>
-      <option value="backend">Только через мой сервер (адрес выше)</option>
-      <option value="direct">Только напрямую с Fonbet (без сервера)</option>
-    </select>
-    <div class="ex-row"><button id="btnTestDirect">🧪 Проверить прямой доступ к Fonbet</button></div>
-    <div class="hint" id="directReport" style="text-align:left">Если прямой доступ работает, сервер не нужен вообще. Fonbet может не пускать запросы со страницы сайта, тогда нужен свой сервер (инструкция в чате).</div>
-    <div class="d-title" style="margin-top:14px">Сервер слежения (необязательно)</div>
-    <input type="text" id="trackerUrl" placeholder="https://ваш-сервер-слежения.up.railway.app" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
-    <div class="hint" id="trackerStatus" style="text-align:left">Обычно заполнять не нужно: слежение за итогами встроено в ваш бэкенд (server.js). Адрес нужен только если вы подняли отдельный сервер из папки tracker.</div>
-    <div class="d-title" style="margin-top:14px">Слежение за матчами</div>
-    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="wakeChk"> 📱 Не выключать экран, пока открыта страница</label>
-    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="notifChk"> 🔔 Уведомлять об итогах моих ставок и изменениях составов</label>
-    <div class="hint" id="notifNote" style="text-align:left"></div>
-    <div class="hint" id="wakeNote" style="text-align:left">Результаты ставок проставляются, пока страница открыта и активна. Если экран гаснет или страница уходит в фон, браузер приостанавливает слежение.</div>
-    <div class="hint" id="histInfo" style="text-align:left"></div>
-    <div class="d-title" style="margin-top:14px">💾 Перенос на другое устройство</div>
-    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="expKeys" checked> Включить в файл ключи ИИ и API-Football</label>
-    <div class="ex-row"><button id="btnExport">📤 Сохранить всё в файл</button><button id="btnImport">📥 Загрузить из файла</button><input type="file" id="impFile" accept=".json,application/json" style="display:none"></div>
-    <div class="hint" id="expNote" style="text-align:left">Сохраняются настройки, ключи (по желанию), ставки, экспрессы и разборы. На другом устройстве нажмите «Загрузить из файла»: ставки объединятся, настройки и ключи заменятся. Файл с ключами храните как пароль. Архив Фонбета в файл не входит: он скачается заново.</div>
+    <div class="stab" data-stab="afb">
+      <div class="d-title">⚽ API-Football (dashboard.api-football.com)</div>
+      <div class="hint" style="text-align:left">Составы, травмы, стадион, судья и сравнение команд для футбола. Бесплатно 100 запросов в день на ключ. Добавляйте сколько угодно ключей кнопкой «➕»: когда на ключе кончается лимит, программа сама переходит к следующему и запоминает рабочий.</div>
+      <div id="afbBlock"></div>
+      <div class="hint" id="afbUsage" style="text-align:left"></div>
+    </div>
+    <div class="stab" data-stab="an">
+      <div class="d-title">🧠 Анализ матча и расход токенов</div>
+      <select id="anMode" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
+        <option value="math">📐 Только математика: модель по коэффициентам и статистике Фонбета, без ИИ (0 токенов)</option>
+        <option value="quick">⚡ Быстрый: аналитик ИИ без поиска в интернете (1 запрос)</option>
+        <option value="deep">🧠 Глубокий: разведчик ищет составы, травмы, новости + аналитик (2 запроса)</option>
+        <option value="max">🏆 Максимум: разведчик + аналитик дважды + критик (4–5 запросов)</option>
+      </select>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-top:8px"><input type="checkbox" id="detailChk" checked style="margin-top:3px"><span>📖 Полное обоснование по нажатию на ставку (ИИ пишет больше текста; выключите, чтобы тратить меньше токенов)</span></label>
+      <div class="hint" id="anHint" style="text-align:left"></div>
+      <div class="d-title" style="margin-top:14px">💰 Ставки</div>
+      <div class="input-group"><label>Сумма ставки по умолчанию, ₽ (можно менять у каждой ставки и экспресса):</label><input type="number" id="stakeDef" min="1" step="any" inputmode="decimal" value="500"></div>
+    </div>
+    <div class="stab" data-stab="arc">
+      <div class="d-title">📚 Архив итогов Фонбета (статистика команд)</div>
+      <select id="arcDays" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
+        <option value="0">Выключен</option><option value="14">14 дней</option><option value="30">30 дней</option><option value="60">60 дней</option><option value="90">90 дней</option><option value="120">120 дней</option><option value="-1">♾ Без ограничения (хранить всё)</option>
+      </select>
+      <div class="hint" id="arcInfo" style="text-align:left"></div>
+      <div class="hint" style="text-align:left">Приложение само скачивает итоги всех матчей Фонбета и считает по ним форму, голы, таймы, отдых и рейтинг команд. Первая загрузка — около 1–2 МБ на день, дальше докачиваются только новые дни. «Без ограничения»: старые дни никогда не удаляются (при включении докачиваются последние 90 дней); для расчётов используются последние 120 дней, чтобы телефону хватало памяти.</div>
+    </div>
+    <div class="stab" data-stab="src">
+      <div class="input-group">
+        <label>Ссылка на бэкенд Railway:</label>
+        <input type="text" id="backendUrl" value="https://fonbet-dashboard-production.up.railway.app">
+      </div>
+      <div class="d-title" style="margin-top:14px">Источник данных</div>
+      <select id="srcMode" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
+        <option value="auto">Авто: сначала мой сервер, если не отвечает, то напрямую с Fonbet</option>
+        <option value="backend">Только через мой сервер (адрес выше)</option>
+        <option value="direct">Только напрямую с Fonbet (без сервера)</option>
+      </select>
+      <div class="ex-row"><button id="btnTestDirect">🧪 Проверить прямой доступ к Fonbet</button></div>
+      <div class="hint" id="directReport" style="text-align:left">Если прямой доступ работает, сервер не нужен вообще.</div>
+      <div class="d-title" style="margin-top:14px">Сервер слежения (необязательно)</div>
+      <input type="text" id="trackerUrl" placeholder="https://ваш-сервер-слежения.up.railway.app" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
+      <div class="hint" id="trackerStatus" style="text-align:left">Обычно не нужен: итоги берутся прямо из раздела «Результаты» Фонбета.</div>
+    </div>
+    <div class="stab" data-stab="watch">
+      <div class="d-title">🔔 Слежение за матчами</div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="wakeChk"> 📱 Не выключать экран, пока открыта страница</label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="notifChk"> 🔔 Уведомлять об итогах моих ставок и изменениях составов</label>
+      <div class="hint" id="notifNote" style="text-align:left"></div>
+      <div class="hint" id="wakeNote" style="text-align:left">Счёт и коэффициенты обновляются с выбранной частотой (вверху, «Авто»). Если экран гаснет или страница уходит в фон, браузер приостанавливает обновления; при возвращении программа сама проверит итоги.</div>
+      <div class="hint" id="histInfo" style="text-align:left"></div>
+    </div>
+    <div class="stab" data-stab="move">
+      <div class="d-title">💾 Перенос на другое устройство</div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="expKeys" checked> Включить в файл ключи ИИ и API-Football</label>
+      <div class="ex-row"><button id="btnExport">📤 Сохранить всё в файл</button><button id="btnImport">📥 Загрузить из файла</button><input type="file" id="impFile" accept=".json,application/json" style="display:none"></div>
+      <div class="hint" id="expNote" style="text-align:left">Сохраняются настройки, ключи (по желанию), ставки с суммами, экспрессы и разборы. На другом устройстве нажмите «Загрузить из файла»: ставки объединятся, настройки и ключи заменятся. Файл с ключами храните как пароль.</div>
+    </div>
   </div>
 </div>
 <div class="modal" id="matchModal" style="display:none">
@@ -366,7 +403,7 @@ window.addEventListener('load', () => {
   $('backendUrl').addEventListener('change', saveConfig);
   $('modelSelect').addEventListener('change', saveConfig);
   initSettings();
-  initAiSettings(); updAnHint(); initNotif(); notifyChanges();
+  initAiSettings(); updAnHint(); initNotif(); notifyChanges(); initStakes(); initHf(); initSettingsTabs();
   $('btnExport').addEventListener('click', exportAll);
   $('btnImport').addEventListener('click', () => $('impFile').click());
   $('impFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) importAll(f); e.target.value = ''; });
@@ -544,7 +581,7 @@ function buildMatches(data){
     });
 
     fresh.push({
-      idx: fresh.length, sortOrder: String(ev.sortOrder || ''), t1id: ev.team1Id !== undefined ? String(ev.team1Id) : '', t2id: ev.team2Id !== undefined ? String(ev.team2Id) : '', blocked: blockMap[ev.id] === 'blocked', info: infoMap[ev.id] || null, id: ev.id, team1: ev.team1 || 'Команда 1', team2: ev.team2 || 'Команда 2',
+      idx: fresh.length, sortOrder: String(ev.sortOrder || ''), t1id: ev.team1Id !== undefined ? String(ev.team1Id) : '', t2id: ev.team2Id !== undefined ? String(ev.team2Id) : '', tv: Array.isArray(ev.tv) ? ev.tv : null, seg: ev.sportId, alias: rootObj.alias || '', blocked: blockMap[ev.id] === 'blocked', info: infoMap[ev.id] || null, id: ev.id, team1: ev.team1 || 'Команда 1', team2: ev.team2 || 'Команда 2',
       league, sport: sportName, sportKey: grp.key, sportIcon: grp.icon, sportCategory: sportName.toLowerCase(), tier: leagueTier(league),
       status, start, place: ev.place || '',
       score: `${s1} : ${s2}`, comment: misc.comment || '',
@@ -824,10 +861,10 @@ function cardHtml(m, showLeague){
     <div class="match-card" data-id="${esc(m.id)}">
       <div class="match-head">
         ${showLeague ? `<div class="lg-tag">${m.sportIcon} ${esc(m.league)}</div>` : ''}
-        <div class="match-top">${badge}${m.blocked ? '<span class="status-badge status-finished">🔒 приём ставок закрыт</span>' : ''}<span>ID: ${esc(m.id)} ▾</span></div>
+        <div class="match-top">${badge}${m.blocked ? '<span class="status-badge status-finished">🔒 приём ставок закрыт</span>' : ''}${Array.isArray(m.tv) && m.tv.some(x => x !== 6) && m.status !== 'finished' ? '<span class="status-badge status-upcoming" title="Есть трансляция">📺</span>' : ''}<span>ID: ${esc(m.id)} ▾</span></div>
         <div class="teams-row">
           <div class="teams-names"><div>${esc(m.team1)}</div><div>${esc(m.team2)}</div></div>
-          <div class="score-box ${m.scoreChanged ? 'changed' : ''}"><div class="score-main">${esc(m.status === 'upcoming' ? '– : –' : m.score)}</div><div class="score-sub">${esc(m.comment)}</div></div>
+          <div class="score-box ${m.scoreChanged ? 'changed' : ''}"><div class="score-main sc-live" data-id="${esc(m.id)}">${esc(m.status === 'upcoming' ? '– : –' : m.score)}</div><div class="score-sub">${esc(m.comment)}</div></div>
         </div>
         ${oddsHtml}${pickLine(m)}
       </div>
@@ -929,6 +966,7 @@ function renderMatches(){
   $('expressPanel').style.display = currentStatusTab === 'express' ? 'block' : 'none';
   const isHist = currentStatusTab === 'history' || currentStatusTab === 'analyses';
   $('sportBar').style.display = isHist ? 'none' : '';
+  $('searchInput').style.display = isHist ? 'none' : '';
   document.querySelector('.dt-bar').style.display = isHist ? 'none' : '';
   const q = $('searchInput').value.trim().toLowerCase();
   const inSearch = parsedMatches.filter(m => passSearch(m, q));
@@ -1037,7 +1075,7 @@ function myBetsBox(m){
   const mine = preds.filter(p => p.mid === String(m.id) && (p.src === 'express' || !p.virtual));
   if (!mine.length) return '';
   return `<div class="ai-box"><div class="ai-legend">⭐ Мои ставки на этот матч (слежу автоматически)</div><div class="tl">${liveLine({ mid: String(m.id) })}</div>` + mine.map(p =>
-    `<div class="bet ${p.risk}"><div class="bet-top"><b>${p.src === 'express' ? '🎯 ' : '⭐ '}${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b><span class="bet-who">→ ${esc(p.desc)}</span><span class="bet-odd">кэф ${esc(p.odd)}</span></div><div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div>${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}</div>`).join('') + `</div>`;
+    `<div class="bet ${p.risk}"><div class="bet-top"><b>${p.src === 'express' ? '🎯 ' : '⭐ '}${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b><span class="bet-who">→ ${esc(p.desc)}</span><span class="bet-odd">кэф ${esc(p.odd)}</span></div><div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.src !== 'express' ? moneyLine(p) : ''}</div>${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}</div>`).join('') + `</div>`;
 }
 
 function renderDetails(m){
@@ -1082,7 +1120,7 @@ function renderDetails(m){
     h += mkBlock(m.id + '|log', 'История за сессию', `<div class="log">` + (log.length ? log.slice().reverse().map(l => `<span class="t">${clock(l.t)}</span> ${esc(l.text)}`).join('<br>') : '<span class="t">Изменений пока не было</span>') + `</div>`, true);
   }
   if (hasFocus) h += focus ? `<button class="btn-more" data-act="allmk">📋 Показать все рынки</button>` : `<button class="btn-more" data-act="focusmk">⬆️ Только рынки из прогноза</button>`;
-  return myBetsBox(m) + aiBox(m) + h;
+  return tvBtn(m) + myBetsBox(m) + aiBox(m) + h;
 }
 
 function openOnly(card){
@@ -1099,7 +1137,10 @@ function onContainerClick(e){
   const hr = e.target.closest('[data-hr]'); if (hr){ histRes = hr.dataset.hr; renderMatches(); return; }
   const ha = e.target.closest('[data-hact]'); if (ha){ handleHistAct(ha); return; }
   const bt = e.target.closest('.bet[data-bd]'); if (bt && !e.target.closest('button, summary, details, a, input')){ toggleBetDetail(bt); return; }
-  const om = e.target.closest('[data-omid]'); if (om && !e.target.closest('button, summary, details, a')){ openMatchModal(om.dataset.omid); return; }
+  const hfr = e.target.closest('[data-hfr]'); if (hfr){ HF.res = hfr.dataset.hfr; renderMatches(); return; }
+  const acv = e.target.closest('[data-accv]'); if (acv){ accView = acv.dataset.accv; renderMatches(); return; }
+  const acs = e.target.closest('[data-accs]'); if (acs){ accSet = acs.dataset.accs; renderMatches(); return; }
+  const om = e.target.closest('[data-omid]'); if (om && !e.target.closest('button, summary, details, a, input')){ openMatchModal(om.dataset.omid); return; }
   const act = e.target.closest('[data-act]');
   if (act){
     if (act.dataset.act === 'more'){ const k = act.dataset.sport; sportLimit[k] = (sportLimit[k] || 40) + 40; renderMatches(); return; }
@@ -1189,7 +1230,7 @@ function loadAi(){
     aiInfo[p] = aiInfo[p] || [];
   });
   if (!PROV[aiCfg.prov] || PROV[aiCfg.prov].data) aiCfg.prov = 'gemini';
-  kOpen.add(aiCfg.prov);
+  kOpen.add(aiCfg.prov); kOpen.add('apifb');
 }
 function saveAi(){
   if (typeof importLock !== 'undefined' && importLock) return;
@@ -1457,7 +1498,7 @@ function keyBlockHtml(p){
     <div class="ex-row"><button data-kact="add" data-prov="${p}">➕ Добавить ключ</button><button data-kact="show" data-prov="${p}">${show ? '🙈 Скрыть' : '👁 Показать'}</button><button data-kact="check" data-prov="${p}">🔑 Проверить ключи</button></div>
     <div class="hint" id="krep-${p}" style="text-align:left"></div></details>`;
 }
-function renderKeyBlocks(){ const el = $('aiBlocks'); if (el) el.innerHTML = ['gemini', 'deepseek', 'qwen', 'claude', 'apifb'].map(keyBlockHtml).join(''); }
+function renderKeyBlocks(){ const el = $('aiBlocks'), fb = $('afbBlock'); if (el) el.innerHTML = AI_LIST.map(keyBlockHtml).join(''); if (fb) fb.innerHTML = keyBlockHtml('apifb'); if (typeof afbUsageInfo === 'function') afbUsageInfo(); }
 function paintKeyBlock(p){
   (aiKeys[p] || []).forEach((k, i) => { const el = $(`kb-${p}-${i}`); if (el) el.innerHTML = keyBadgeHtml(p, i); });
   const s = $('ksum-' + p); if (s) s.textContent = keySummary(p);
@@ -1506,7 +1547,7 @@ function initAiSettings(){
   $('aiFallback').checked = !!aiCfg.fallback;
   $('aiFallback').addEventListener('change', () => { aiCfg.fallback = $('aiFallback').checked; saveAi(); });
   renderKeyBlocks();
-  const box = $('aiBlocks');
+  for (const box of [$('aiBlocks'), $('afbBlock')]){
   box.addEventListener('toggle', e => { const d = e.target; if (d && d.classList && d.classList.contains('kblock')){ if (d.open) kOpen.add(d.dataset.prov); else kOpen.delete(d.dataset.prov); } }, true);
   box.addEventListener('input', e => {
     const inp = e.target.closest('.key-input'); if (!inp) return;
@@ -1535,8 +1576,9 @@ function initAiSettings(){
       saveAi(); renderKeyBlocks(); if (p === aiCfg.prov) loadModels();
     } else if (act === 'show'){
       if (kShow.has(p)) kShow.delete(p); else kShow.add(p); renderKeyBlocks();
-    } else if (act === 'check') checkKeys(p);
+    } else if (act === 'check'){ checkKeys(p).then(() => { if (p === 'apifb') afbUsageInfo(); }); }
   });
+  }
   $('modelSelect').addEventListener('change', () => { aiCfg.model[aiCfg.prov] = $('modelSelect').value; saveAi(); });
 }
 
@@ -1831,7 +1873,8 @@ function factsHtml(r, d){
 /* ----- запрос к ИИ: максимум данных о матче и командах ----- */
 let lastGrounding = [];
 /* ================= Архив итогов Фонбета: статистика команд по их номерам, рейтинг Эло ================= */
-const ARC = { db: null, days: {}, teams: new Map(), comps: new Map(), compNames: {}, count: 0, loaded: false, busy: false, info: '', elo: {}, eloN: {}, avgCache: {} };
+const ARC_MEM_DAYS = 120;
+const ARC = { stored: new Set(), db: null, days: {}, teams: new Map(), comps: new Map(), compNames: {}, count: 0, loaded: false, busy: false, info: '', elo: {}, eloN: {}, avgCache: {} };
 const arcDepth = () => { const v = localStorage.getItem('fb_arc_days'); return v === null ? 30 : Number(v) || 0; };
 function idb(){
   return new Promise((res, rej) => {
@@ -1906,10 +1949,12 @@ async function archiveSync(){
   if (!depth){ ARC.info = '📚 Архив Фонбета выключен в ⚙️'; return; }
   ARC.busy = true;
   try {
-    if (!ARC.loaded){ const all = await idbAll(); all.forEach(d => { ARC.days[d.date] = d; }); ARC.loaded = true; buildArchiveIndex(); }
-    const want = []; for (let k = 0; k <= depth; k++) want.push(mskDate(Date.now() - k * 864e5));
+    const unlim = depth < 0, dl = unlim ? 90 : depth, memCut = mskDate(Date.now() - ARC_MEM_DAYS * 864e5);
+    if (!ARC.loaded){ const all = await idbAll(); ARC.stored = new Set(all.map(d => d.date)); all.forEach(d => { if (d.date >= memCut) ARC.days[d.date] = d; }); ARC.loaded = true; buildArchiveIndex(); }
+    const want = []; for (let k = 0; k <= dl; k++) want.push(mskDate(Date.now() - k * 864e5));
     const oldest = want[want.length - 1];
-    Object.keys(ARC.days).forEach(d => { if (d < oldest){ delete ARC.days[d]; idbDel(d); } });
+    Object.keys(ARC.days).forEach(d => { if (d < memCut) delete ARC.days[d]; });   // в памяти держим не больше 120 дней
+    if (!unlim) Object.keys(ARC.days).concat([...ARC.stored]).forEach(d => { if (d < oldest){ delete ARC.days[d]; if (ARC.stored.delete(d)) idbDel(d); } });
     const todo = want.filter(d => { const D = ARC.days[d]; return !D || (!D.final && Date.now() - D.at > 30 * 60e3); });
     let n = 0, err = '';
     for (const d of todo){
@@ -1917,14 +1962,14 @@ async function archiveSync(){
         const j = await fetchResultsDay(d);
         const rec = compactDay(j, d);
         rec.final = Date.now() - Date.parse(d + 'T21:00:00Z') > 12 * 3600e3;
-        ARC.days[d] = rec; await idbPut(rec); n++;
-        ARC.info = `📚 Архив Фонбета: загружаю… ${Object.keys(ARC.days).length} из ${depth + 1} дней`;
+        ARC.days[d] = rec; await idbPut(rec); ARC.stored.add(d); n++;
+        ARC.info = `📚 Архив Фонбета: загружаю… ${Object.keys(ARC.days).length} из ${dl + 1} дней`;
         if (n % 4 === 0) buildArchiveIndex();
       } catch (e){ err = e.message; if (!n) break; }
       await new Promise(r => setTimeout(r, 1200));
     }
     if (n) buildArchiveIndex();
-    ARC.info = `📚 Архив Фонбета: ${Object.keys(ARC.days).length} из ${depth + 1} дней, матчей ${ARC.count}, команд и игроков ${ARC.teams.size}` + (err ? ` · ошибка загрузки: ${err}` : '');
+    ARC.info = (unlim ? `📚 Архив Фонбета без ограничения: хранится ${ARC.stored.size} дней, для расчётов последние ${Object.keys(ARC.days).length}` : `📚 Архив Фонбета: ${Object.keys(ARC.days).length} из ${dl + 1} дней`) + `, матчей ${ARC.count}, команд и игроков ${ARC.teams.size}` + (err ? ` · ошибка загрузки: ${err}` : '');
   } catch (e){ ARC.info = '📚 Архив Фонбета недоступен: ' + e.message; }
   finally { ARC.busy = false; const el = $('arcInfo'); if (el) el.textContent = ARC.info; }
 }
@@ -2734,6 +2779,207 @@ function ensureSsis(m){
   return ssisState[m.id];
 }
 
+/* ================= Деньги: сумма ставки, выигрыш, прибыль (как в Фонбете) ================= */
+const stakeDef = () => { const v = Number(localStorage.getItem('fb_stake_def')); return v > 0 ? v : 500; };
+const rub = x => (Math.round(x * 100) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽';
+const sgnRub = x => (x > 0.004 ? '+' : x < -0.004 ? '−' : '') + rub(Math.abs(x));
+const stakeDraft = {};
+/* множитель ставки по итогу: 0 — проигрыш, 1 — возврат, кэф — выигрыш; четвертные линии дают половины */
+function predMult(p){
+  if (!['won', 'lost', 'void'].includes(p.state)) return null;
+  const odd = Number(p.odd) || 1;
+  if (!p.manual && !p.early && p.final){
+    const [a, b] = String(p.final).split(':').map(Number);
+    const o = !isNaN(a) && !isNaN(b) ? outcome(String(p.market), a, b) : null;
+    if (o){
+      const m = o[0] * odd + o[1];
+      if ((p.state === 'won' && m > 1) || (p.state === 'lost' && m < 1) || (p.state === 'void' && Math.abs(m - 1) < 1e-9)) return m;
+    }
+  }
+  return p.state === 'won' ? odd : p.state === 'void' ? 1 : 0;
+}
+function predMoney(p){
+  const s = Number(p.stake); if (!(s > 0)) return null;
+  const k = predMult(p);
+  return k === null ? { stake: s, pending: true, potential: s * (Number(p.odd) || 1) } : { stake: s, ret: s * k, profit: s * k - s };
+}
+function expMoney(ex, pm){
+  const s = Number(ex.stake); if (!(s > 0)) return null;
+  const legs = ex.legs.map(id => pm.get(id)).filter(Boolean);
+  const ms = legs.map(predMult), odds = legs.reduce((a, l) => a * (Number(l.odd) || 1), 1);
+  if (ms.some(x => x === 0)) return { stake: s, ret: 0, profit: -s };
+  if (ms.some(x => x === null)) return { stake: s, pending: true, potential: s * legs.reduce((a, l, i) => a * (ms[i] === null ? (Number(l.odd) || 1) : ms[i]), 1), odds };
+  const k = ms.reduce((a, x) => a * x, 1);
+  return { stake: s, ret: s * k, profit: s * k - s };
+}
+function moneySum(list){
+  const o = { staked: 0, ret: 0, inPlay: 0, potential: 0, n: 0, np: 0 };
+  list.filter(Boolean).forEach(x => { if (x.pending){ o.inPlay += x.stake; o.potential += x.potential; o.np++; } else { o.staked += x.stake; o.ret += x.ret; o.n++; } });
+  o.profit = o.ret - o.staked; o.roi = o.staked ? o.profit / o.staked : null;
+  return o;
+}
+function moneyRow(label, o){
+  if (!o.n && !o.np) return '';
+  const col = o.profit > 0 ? 'var(--accent)' : o.profit < 0 ? 'var(--red)' : 'var(--muted)';
+  return `<div class="st-row"><b>${label}</b> ${o.n ? `поставлено ${rub(o.staked)} · вернулось ${rub(o.ret)} · <span style="color:${col}">${o.profit >= 0 ? 'прибыль' : 'убыток'} ${sgnRub(o.profit)}${o.roi !== null ? ` (${o.roi >= 0 ? '+' : ''}${Math.round(o.roi * 100)}%)` : ''}</span>` : ''}${o.np ? `${o.n ? ' · ' : ''}в игре ${rub(o.inPlay)} → возможно ${rub(o.potential)}` : ''}</div>`;
+}
+function stakeCtl(key, odd, val){
+  const v = stakeDraft[key] !== undefined ? stakeDraft[key] : (val || stakeDef());
+  const w = Number(v) > 0 && Number(odd) > 0 ? rub(Number(v) * Number(odd)) : '—';
+  return `<span class="stake-box">💰 <input class="stake-in" type="number" inputmode="decimal" min="1" step="any" data-sk="${esc(key)}" data-odd="${esc(odd)}" value="${esc(v)}"> ₽ <span class="stake-win" data-sk="${esc(key)}">→ выигрыш ${w}</span></span>`;
+}
+function moneyLine(p){
+  const M = predMoney(p);
+  if (!M) return p.virtual ? '' : `<span class="hx-n">сумма не указана</span>`;
+  if (M.pending) return `<span class="money">💰 ${rub(M.stake)} → возможный выигрыш ${rub(M.potential)}</span>`;
+  return `<span class="money ${M.profit > 0 ? 'good' : M.profit < 0 ? 'bad' : ''}">💰 ${rub(M.stake)} · ${M.profit > 0.004 ? `выигрыш ${rub(M.ret)} (${sgnRub(M.profit)})` : M.profit < -0.004 ? `${M.ret > 0 ? 'вернулось ' + rub(M.ret) + ', ' : ''}${sgnRub(M.profit)}` : `возврат ${rub(M.ret)}`}</span>`;
+}
+function initStakes(){
+  const onInput = e => {
+    const inp = e.target.closest && e.target.closest('.stake-in'); if (!inp) return;
+    const key = inp.dataset.sk, v = Number(inp.value), w = document.querySelectorAll(`.stake-win[data-sk="${window.CSS && CSS.escape ? CSS.escape(key) : key.replace(/"/g, '')}"]`);
+    stakeDraft[key] = inp.value;
+    w.forEach(el => { el.textContent = '→ выигрыш ' + (v > 0 ? rub(v * Number(inp.dataset.odd)) : '—'); });
+    if (key.startsWith('p:')){ const p = preds.find(x => x.pid === key.slice(2)); if (p && p.state === 'pending' && v > 0){ p.stake = v; saveStoreSoon(); } }
+    if (key.startsWith('ex:')){ const ex = exps.find(x => x.eid === key.slice(3)); if (ex && v > 0){ ex.stake = v; saveStoreSoon(); } }
+  };
+  document.addEventListener('input', onInput);
+  if ($('stakeDef')){
+    $('stakeDef').value = stakeDef();
+    $('stakeDef').addEventListener('change', () => { const v = Number($('stakeDef').value); if (v > 0) localStorage.setItem('fb_stake_def', String(v)); });
+  }
+}
+let saveSoonT = null;
+function saveStoreSoon(){ clearTimeout(saveSoonT); saveSoonT = setTimeout(() => { saveStore(); renderStats(); }, 700); }
+const readStake = (el, key) => { const inp = el && el.querySelector('.stake-in'); const v = Number(inp ? inp.value : (stakeDraft[key] || stakeDef())); return v > 0 ? v : 0; };
+
+/* ================= Фильтры вкладок «Мои экспрессы» и «Анализ матча» ================= */
+const HF = { per: 'all', from: '', to: '', res: 'all', q: '' };
+function hfRange(){
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0); const t = d0.getTime(), D = 864e5;
+  switch (HF.per){
+    case 'today': return { from: t, to: t + D - 1 };
+    case 'yesterday': return { from: t - D, to: t - 1 };
+    case 'tomorrow': return { from: t + D, to: t + 2 * D - 1 };
+    case '3d': return { from: t - 2 * D, to: t + D - 1 };
+    case '7d': return { from: t - 6 * D, to: t + D - 1 };
+    case '30d': return { from: t - 29 * D, to: t + D - 1 };
+    case 'custom': return { from: HF.from ? new Date(HF.from + 'T00:00:00').getTime() : 0, to: HF.to ? new Date(HF.to + 'T23:59:59').getTime() : Infinity };
+    default: return { from: 0, to: Infinity };
+  }
+}
+const evTime = x => x.ms ? x.ms * 1000 : x.at;
+const dTxt = ts => { const d = new Date(ts); return `${pad(d.getDate())}.${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+function hfText(x){ return `${x.t1} ${x.t2} ${x.league || ''} ${dTxt(evTime(x))} ${x.market || ''}`.toLowerCase(); }
+function hfMatchQ(text){ const q = HF.q.trim().toLowerCase(); return !q || q.split(/\s+/).every(t => text.includes(t)); }
+const hfResOk = st => HF.res === 'all' || (HF.res === 'pending' ? (st === 'pending' || st === 'unknown') : st === HF.res);
+function hfBar(){
+  const R = [['all', 'Все'], ['won', '✅ Зашли'], ['lost', '❌ Не зашли'], ['pending', '⏳ В игре'], ['void', '↩️ Возврат']];
+  const P = [['all', 'Всё время'], ['today', 'Сегодня'], ['yesterday', 'Вчера'], ['tomorrow', 'Завтра'], ['3d', '3 дня'], ['7d', '7 дней'], ['30d', '30 дней'], ['custom', 'Свой период…']];
+  return `<div class="hf"><div class="ex-row"><span>📅 Дата матча:</span><select id="hfPer">${P.map(([k, l]) => `<option value="${k}" ${HF.per === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <input type="date" id="hfFrom" value="${esc(HF.from)}" style="${HF.per === 'custom' ? '' : 'display:none'}"><input type="date" id="hfTo" value="${esc(HF.to)}" style="${HF.per === 'custom' ? '' : 'display:none'}"></div>
+    <div class="ex-row"><span>Итог:</span>${R.map(([k, l]) => `<button data-hfr="${k}" class="${HF.res === k ? 'active' : ''}">${l}</button>`).join('')}</div>
+    <input type="text" id="hfQ" class="search-box" style="margin:4px 0 8px" placeholder="🔍 Команда, турнир, ставка, дата (18.11) или время (19:30)" value="${esc(HF.q)}"></div>`;
+}
+function hfRefreshBody(){ const b = $('hBody'); if (!b) return; b.innerHTML = currentStatusTab === 'history' ? histBody() : anBody(); }
+function initHf(){
+  const box = $('matchesContainer');
+  box.addEventListener('input', e => {
+    const id = e.target.id;
+    if (id === 'hfQ'){ HF.q = e.target.value; hfRefreshBody(); }
+    if (id === 'hfFrom' || id === 'hfTo'){ HF[id === 'hfFrom' ? 'from' : 'to'] = e.target.value; hfRefreshBody(); }
+  });
+  box.addEventListener('change', e => { if (e.target.id === 'hfPer'){ HF.per = e.target.value; renderMatches(); } });
+}
+
+/* ================= Точность по типам ставок: понятно и с деньгами ================= */
+let accView = 'type', accSet = 'mine';
+function betType(p){
+  if (p.sub){
+    const n = String(p.sub).toLowerCase();
+    if (/углов/.test(n)) return 'Угловые'; if (/карт|жк|желт|жёлт/.test(n)) return 'Карточки';
+    if (/тайм|период|четверт|сет|партия|карта/.test(n)) return 'Тайм, период, сет'; return 'Другие доп. рынки';
+  }
+  const k = String(p.market);
+  if (k === 'П1' || k === 'П2') return 'Победа команды (П1/П2)'; if (k === 'X') return 'Ничья'; if (/^(1X|X2|12)$/.test(k)) return 'Двойной шанс';
+  if (/^ТБ/.test(k)) return 'Тотал больше'; if (/^ТМ/.test(k)) return 'Тотал меньше';
+  if (/^Ф[12]\(\s*-/.test(k)) return 'Фора с минусом'; if (/^Ф[12]/.test(k)) return 'Фора с плюсом или 0';
+  return 'Другое';
+}
+const ODD_BANDS = [[0, 1.5, 'кэф до 1.50'], [1.5, 2, 'кэф 1.50–1.99'], [2, 3, 'кэф 2.00–2.99'], [3, 1e9, 'кэф 3.00 и выше']];
+function accGroup(p){
+  if (accView === 'risk') return { low: '🟢 Надёжные', medium: '🟡 Средний риск', high: '🔴 Рискованные' }[p.risk] || 'Без оценки риска';
+  if (accView === 'sport') return SK_NAME(p.sk);
+  if (accView === 'odds'){ const o = Number(p.odd) || 0; return (ODD_BANDS.find(b => o >= b[0] && o < b[1]) || [0, 0, 'без кэфа'])[2]; }
+  return betType(p);
+}
+function accStats(xs){
+  const done = xs.filter(p => ['won', 'lost', 'void'].includes(p.state)), won = done.filter(p => p.state === 'won').length, lost = done.filter(p => p.state === 'lost').length;
+  const units = done.reduce((s, p) => s + (predMult(p) - 1), 0);
+  const avgOdd = done.length ? done.reduce((s, p) => s + (Number(p.odd) || 0), 0) / done.length : 0;
+  const money = moneySum(done.map(predMoney));
+  return { n: done.length, won, lost, voids: done.length - won - lost, hit: won + lost ? won / (won + lost) : null, roi: done.length ? units / done.length : null, avgOdd, need: avgOdd > 1 ? 1 / avgOdd : null, money, pending: xs.length - done.length };
+}
+function accRow(name, S){
+  const hitP = S.hit === null ? null : Math.round(S.hit * 100), needP = S.need ? Math.round(S.need * 100) : null;
+  const good = S.roi !== null && S.roi >= 0.03, bad = S.roi !== null && S.roi <= -0.1;
+  const verdict = S.n < 5 ? '<span class="muted">мало данных</span>' : good ? '<span class="good">👍 в плюсе</span>' : bad ? '<span class="bad">⚠️ в минусе</span>' : '<span class="muted">≈ около нуля</span>';
+  return `<div class="acc-row"><div class="acc-top"><b>${esc(name)}</b><span>${verdict}</span></div>
+    <div class="acc-bar"><span class="${good ? 'g' : bad ? 'r' : 'y'}" style="width:${hitP || 0}%"></span>${needP ? `<i style="left:${needP}%" title="нужно для прибыли"></i>` : ''}</div>
+    <div class="acc-sub">Зашло <b>${hitP === null ? '—' : hitP + '%'}</b> (✅ ${S.won} · ❌ ${S.lost}${S.voids ? ' · ↩️ ' + S.voids : ''})${needP ? ` · для прибыли нужно от ${needP}% при среднем кэфе ${S.avgOdd.toFixed(2)}` : ''}${S.roi !== null ? ` · доходность <b class="${S.roi >= 0 ? 'good' : 'bad'}">${S.roi >= 0 ? '+' : ''}${Math.round(S.roi * 100)}%</b>` : ''}${S.money.n ? ` · деньги <b class="${S.money.profit >= 0 ? 'good' : 'bad'}">${sgnRub(S.money.profit)}</b>` : ''}${S.pending ? ` · ⏳ ${S.pending} в игре` : ''}</div></div>`;
+}
+function accuracyHtml(ps, opts){
+  opts = opts || {};
+  const groups = {}; ps.forEach(p => { const g = accGroup(p); (groups[g] = groups[g] || []).push(p); });
+  const rows = Object.entries(groups).map(([g, xs]) => [g, accStats(xs)]).filter(([, S]) => S.n || S.pending).sort((a, b) => b[1].n - a[1].n);
+  const V = [['type', 'По типу ставки'], ['risk', 'По риску'], ['sport', 'По виду спорта'], ['odds', 'По коэффициенту']];
+  const T = accStats(ps);
+  let h = `<div class="acc"><div class="acc-h">📊 Точность ${opts.title || 'по типам ставок'}</div>`;
+  if (opts.sets) h += `<div class="ex-row">${opts.sets}</div>`;
+  h += `<div class="ex-row">${V.map(([k, l]) => `<button data-accv="${k}" class="${accView === k ? 'active' : ''}">${l}</button>`).join('')}</div>`;
+  h += T.n ? accRow('Всего', T) : '';
+  h += rows.length ? rows.map(([g, S]) => accRow(g, S)).join('') : `<div class="hint" style="text-align:left">Пока нет завершённых ставок за выбранный период.</div>`;
+  h += `<div class="hint" style="text-align:left">Зелёная полоса — доля зашедших, чёрная отметка — сколько нужно, чтобы выйти в плюс при таких коэффициентах. «Доходность» — сколько процентов прибыли приносила бы каждая ставка одинаковой суммы. «Деньги» — по суммам, которые вы указали.</div></div>`;
+  return h;
+}
+
+/* ================= Счёт в реальном времени везде ================= */
+function liveUpdate(){
+  document.querySelectorAll('.sc-live').forEach(el => {
+    const m = matchById[el.dataset.id]; if (!m) return;
+    const t = m.status === 'upcoming' ? '– : –' : m.score;
+    if (el.textContent !== t){ el.textContent = t; el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  });
+}
+const inputBusy = root => { const ae = document.activeElement; return !!(ae && root && root.contains(ae) && ae.tagName === 'INPUT' && /^(text|number|search|date|tel)$/.test(ae.type)); };
+
+/* ================= Трансляция на Фонбете ================= */
+function tvBtn(m){
+  if (!Array.isArray(m.tv) || !m.tv.length || m.status === 'finished') return '';
+  const video = m.tv.some(x => x !== 6);
+  const url = `https://fon.bet/sports/${encodeURIComponent(m.alias || 'football')}/${encodeURIComponent(m.seg || '')}/${encodeURIComponent(m.id)}`;
+  return `<a class="btn-tv" href="${esc(url)}" target="_blank" rel="noopener">${video ? '📺 Смотреть трансляцию на Фонбете' : '🎬 Трансляция / визуализация на Фонбете'}</a><div class="hint" style="text-align:left;margin-top:-4px">Откроется этот матч на fon.bet, там нажмите «Трансляция». Видео Фонбет показывает только вошедшим в аккаунт (иногда нужен положительный баланс).</div>`;
+}
+
+/* ================= Вкладки настроек ================= */
+function initSettingsTabs(){
+  const bar = $('stabBar'); if (!bar) return;
+  const show = k => {
+    document.querySelectorAll('#settingsModal .stab').forEach(x => x.classList.toggle('on', x.dataset.stab === k));
+    bar.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.st === k));
+    try { localStorage.setItem('fb_stab', k); } catch (e){}
+    if (k === 'afb') afbUsageInfo();
+  };
+  bar.addEventListener('click', e => { const b = e.target.closest('[data-st]'); if (b) show(b.dataset.st); });
+  let last = 'ai'; try { last = localStorage.getItem('fb_stab') || 'ai'; } catch (e){}
+  show(document.querySelector(`#settingsModal .stab[data-stab="${last}"]`) ? last : 'ai');
+}
+function afbUsageInfo(){
+  const el = $('afbUsage'); if (!el) return;
+  const n = (aiKeys.apifb || []).filter(Boolean).length;
+  el.textContent = n ? `Ключей: ${n}. Запросов сегодня по счётчику программы: ${afbUsed.n || 0} (бесплатно 100 в день на каждый ключ; когда лимит ключа кончается, программа сама берёт следующий).` : 'Ключей пока нет: футбол анализируется без API-Football (статистика Фонбета и разведка ИИ остаются).';
+}
+
 function updAnHint(){
   if (!$('anMode')) return;
   const v = $('anMode').value, det = $('detailChk').checked, sp = searchProv();
@@ -2830,9 +3076,27 @@ function renderExpressResult(){
   r.legs.forEach((l, i) => {
     h += `<div class="bet ${l.risk}" data-mid="${esc(l.id)}"><div class="bet-top"><b>${i + 1}. ${esc(l.market)}</b><span class="bet-who">→ ${esc(l.desc)}</span><span class="bet-odd">кэф ${esc(l.odd)}</span><span class="bet-risk">${RISK[l.risk]}</span></div><div class="ex-leg-match">${esc(l.title)}</div><div class="bet-why">${esc(l.reason)}</div>${l.p ? `<div class="why">модель ${pct(l.p)}${l.pm ? ' · рынок ' + pct(l.pm) : ''} · выгода ${(() => { const e = evOf(l.p, l.push, l.odd); return (e >= 0 ? '+' : '') + Math.round(e * 100) + '%'; })()}</div>` : ''}</div>`;
   });
-  h += `<div class="ai-foot">💾 Сохранён во вкладке «Мои экспрессы». Собрано в ${clock(r.at)} по коэффициентам на этот момент. Чем больше событий, тем ниже шанс, что экспресс пройдёт целиком. ИИ не знает исходов, это не гарантия.</div><button class="btn-more" id="exCopy">📋 Копировать экспресс</button></div>`;
+  if (!r.saved) h += `<div class="cf-row exp-conf">${stakeCtl('exp:new', r.total.toFixed(2))}<button class="cf-btn" id="exConfirm">✅ Подтвердить экспресс</button></div><div class="hint" style="text-align:left">Экспресс попадёт в «📚 Мои экспрессы» и будет отслеживаться только после подтверждения. Коэффициенты фиксируются на момент подтверждения.</div>`;
+  else h += `<div class="ai-sum">✅ Экспресс подтверждён: ставка ${rub(r.stake)}, общий кэф ${r.total.toFixed(2)}, возможный выигрыш ${rub(r.stake * r.total)}. Слежу за ним во вкладке «📚 Мои экспрессы».</div>`;
+  h += `<div class="ai-foot">Собрано в ${clock(r.at)} по коэффициентам на этот момент. Чем больше событий, тем ниже шанс, что экспресс пройдёт целиком. ИИ не знает исходов, это не гарантия.</div><button class="btn-more" id="exCopy">📋 Копировать экспресс</button></div>`;
   el.innerHTML = h;
   if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function confirmExpress(){
+  const r = expResult; if (!r || r.state !== 'done' || r.saved) return;
+  const stake = readStake($('exResult').querySelector('.exp-conf'), 'exp:new');
+  if (!(stake > 0)){ toast('Введите сумму ставки'); return; }
+  const gone = [];
+  r.legs.forEach(l => { const m = matchById[String(l.id)]; if (!m || m.status === 'finished' || m.blocked){ gone.push(l); return; } const v = Number(m.odds[l.market]); if (v > 1) l.odd = v; });
+  if (gone.length){ toast(`Событий уже нет в линии или приём закрыт: ${gone.length}. Соберите экспресс заново.`); return; }
+  r.total = r.legs.reduce((a, l) => a * l.odd, 1);
+  const X = expressMath(r.legs);
+  const ex = saveExpress(r.legs, r.summary, r.total);
+  ex.stake = stake; if (X){ ex.prob = X.prob; ex.ev = X.ev; r.X = X; }
+  saveStore(); renderStats();
+  r.saved = ex.eid; r.stake = stake; delete stakeDraft['exp:new'];
+  renderExpressResult();
+  toast(`✅ Экспресс подтверждён: ${rub(stake)} по кэф ${r.total.toFixed(2)} → возможный выигрыш ${rub(stake * r.total)}`);
 }
 async function buildExpress(){
   const allowedRisk = Object.keys(expRisk).filter(k => expRisk[k]);
@@ -2867,9 +3131,7 @@ async function buildExpress(){
     if (!used.length) throw new Error(legs.length ? '⚠️ ИИ предложил ставки только другого уровня риска. Разрешите больше уровней риска или повторите.' : '⚠️ ИИ не вернул распознаваемых ставок. Попробуйте ещё раз.');
     const total = used.reduce((p, l) => p * l.odd, 1);
     const X = expressMath(used);
-    const ex = saveExpress(used, (d && d.summary) || '', total);
-    if (X){ ex.prob = X.prob; ex.ev = X.ev; saveStore(); }
-    expResult = { state:'done', legs: used, total, summary: (d && d.summary) || '', at: Date.now(), X };
+    expResult = { state:'done', legs: used, total, summary: (d && d.summary) || '', at: Date.now(), X, saved: null };
   } catch (err){ expResult = { state:'error', text: err.message }; }
   renderExpressResult();
 }
@@ -2903,6 +3165,8 @@ function initExpress(){
     updateExInfo();
   });
   $('exResult').addEventListener('click', e => {
+    if (e.target.closest('#exConfirm')){ confirmExpress(); return; }
+    if (e.target.closest('.stake-box')) return;
     const lg = e.target.closest('[data-mid]'); if (lg){ openMatchModal(lg.dataset.mid); return; }
     if (!e.target.closest('#exCopy') || !expResult || expResult.state !== 'done') return;
     const txt = expResult.legs.map((l, i) => `${i + 1}. ${l.title.replace(/^\S+\s/, '')}: ${l.desc} (кэф ${l.odd})`).join('\n') + `\nОбщий кэф ≈ ${expResult.total.toFixed(2)}`;
@@ -2910,7 +3174,15 @@ function initExpress(){
   });
 }
 
-function renderAll(){ renderMatches(); refreshMatchModal(); }
+/* при каждом обновлении данных перерисовываем всё; если вы печатаете (сумма, поиск), обновляем только счёт и список, чтобы не сбить ввод */
+function renderAll(){
+  if (inputBusy($('matchesContainer'))){
+    const ae = document.activeElement;
+    if (ae && /^hf(Q|From|To)$/.test(ae.id)) hfRefreshBody();
+    liveUpdate();
+  } else renderMatches();
+  if (inputBusy($('matchModal'))) liveUpdate(); else refreshMatchModal();
+}
 function toggleAllMk(id){
   id = String(id);
   if (showAllMk.has(id)) showAllMk.delete(id); else showAllMk.add(id);
@@ -3254,18 +3526,21 @@ function recordAnalysis(m){
   analyses.push(A); saveStore(); renderStats();
   return A;
 }
-function confirmBet(aid, i, quiet){
+function confirmBet(aid, i, quiet, stake){
   const A = analyses.find(a => a.aid === aid); if (!A) return false;
   const b = A.bets[i], p = predOf(b); if (!b || !p || !p.virtual) return false;
   if (p.state !== 'pending'){ toast('Матч уже сыгран или результат известен: подтвердить нельзя'); return false; }
-  p.virtual = false; p.at = Date.now();
+  const m = matchById[A.mid];
+  if (m && b.key){ const sb = b.sub ? m.subs.find(x => x.name === b.sub) : null; const v = Number(sb ? sb.odds[b.key] : m.odds[b.key]); if (v > 1){ p.odd = v; b.odd = v; } }   // кэф на момент подтверждения, как в Фонбете
+  p.virtual = false; p.at = Date.now(); p.stake = stake > 0 ? stake : stakeDef();
+  delete stakeDraft['a:' + aid + '|' + i];
   saveStore(); renderStats(); renderAll();
-  if (!quiet) toast('✅ Ставка подтверждена. Слежу за матчем и сама отмечу результат');
+  if (!quiet) toast(`✅ Ставка ${rub(p.stake)} по кэф ${p.odd} подтверждена: возможный выигрыш ${rub(p.stake * p.odd)}. Слежу за матчем.`);
   return true;
 }
 function confirmAll(aid){
   const A = analyses.find(a => a.aid === aid); if (!A) return;
-  let n = 0; A.bets.forEach((b, i) => { if (confirmBet(aid, i, true)) n++; });
+  let n = 0; A.bets.forEach((b, i) => { if (confirmBet(aid, i, true, Number(stakeDraft['a:' + aid + '|' + i]) || stakeDef())) n++; });
   if (n) toast(`✅ Подтверждено ставок: ${n}`);
 }
 function cancelBet(aid, i){
@@ -3276,8 +3551,8 @@ function cancelBet(aid, i){
 function betStateHtml(A, i, b){
   const p = predOf(b);
   if (!p) return '';
-  if (!p.virtual) return `<div class="cf-row"><span class="hx-st ${p.state}">⭐ ${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.state === 'pending' ? `<button class="cf-btn ghost" data-cact="cancel" data-aid="${esc(A.aid)}" data-i="${i}">Отменить</button>` : ''}</div>`;
-  if (p.state === 'pending') return `<div class="cf-row"><button class="cf-btn" data-cact="confirm" data-aid="${esc(A.aid)}" data-i="${i}">✅ Подтвердить ставку</button></div>`;
+  if (!p.virtual) return `<div class="cf-row"><span class="hx-st ${p.state}">⭐ ${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.state === 'pending' ? stakeCtl('p:' + p.pid, p.odd, p.stake) + (p.stake ? '' : ' <span class="hx-n">укажите сумму</span>') : moneyLine(p)}${p.state === 'pending' ? `<button class="cf-btn ghost" data-cact="cancel" data-aid="${esc(A.aid)}" data-i="${i}">Отменить</button>` : ''}</div>`;
+  if (p.state === 'pending') return `<div class="cf-row">${stakeCtl('a:' + A.aid + '|' + i, b.odd)}<button class="cf-btn" data-cact="confirm" data-aid="${esc(A.aid)}" data-i="${i}">✅ Подтвердить ставку</button></div>`;
   return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]} · без ставки</span></div>`;
 }
 function confirmCtl(m, i){
@@ -3293,7 +3568,7 @@ function confirmAllCtl(m){
 }
 function handleConfirm(b){
   const c = b.dataset.cact, aid = b.dataset.aid;
-  if (c === 'confirm') confirmBet(aid, Number(b.dataset.i));
+  if (c === 'confirm') confirmBet(aid, Number(b.dataset.i), false, readStake(b.closest('.cf-row'), 'a:' + aid + '|' + b.dataset.i));
   else if (c === 'all') confirmAll(aid);
   else if (c === 'cancel') cancelBet(aid, Number(b.dataset.i));
   else if (c === 'open') openMatchModal(b.dataset.mid);
@@ -3331,25 +3606,31 @@ function analysisCard(A){
   h += `<div class="cf-row">${unconf && A.bets.length > 1 ? `<button class="cf-btn" data-cact="all" data-aid="${esc(A.aid)}">✅ Подтвердить все</button>` : ''}<button class="cf-btn ghost" data-cact="open" data-mid="${esc(A.mid)}">📂 Открыть матч</button><button class="cf-btn ghost" data-cact="del" data-aid="${esc(A.aid)}">🗑 Удалить</button></div></div>`;
   return h;
 }
-function renderAnalyses(){
-  const q = $('searchInput').value.trim().toLowerCase(), pr = readPeriod();
-  const list = analyses.filter(a => inPer(a.at, pr) && (!q || (a.t1 + ' ' + a.t2 + ' ' + a.league).toLowerCase().includes(q)));
-  const conf = list.filter(a => a.bets.some(isMine)).reverse(), fresh = list.filter(a => !a.bets.some(isMine)).reverse();
-  const singles = preds.filter(p => p.src === 'single' && inPer(p.at, pr));
-  let h = tallyHtml('Мои ставки (подтверждённые):', tally(singles.filter(p => !p.virtual).map(p => p.state))) + tallyHtml('Все прогнозы ИИ (включая неподтверждённые):', tally(singles.map(p => p.state))) + breakdownHtml(singles) + calibrationHtml(singles) + qualityHtml();
-  h += `<div class="ex-row">` + [['all', `Все (${list.length})`], ['conf', `⭐ Мои ставки (${conf.length})`], ['new', `Не подтверждены (${fresh.length})`]]
+function anBody(){
+  const rg = hfRange();
+  const L = analyses.filter(a => {
+    const t = a.ms ? a.ms * 1000 : a.at;
+    if (!(t >= rg.from && t <= rg.to)) return false;
+    if (!hfMatchQ(hfText(a) + ' ' + a.bets.map(b => ((b.sub ? b.sub + ' ' : '') + b.market + ' ' + (b.desc || '')).toLowerCase()).join(' '))) return false;
+    return HF.res === 'all' || a.bets.some(b => { const p = predOf(b); return p && (anView !== 'conf' || !p.virtual) && hfResOk(p.state); });
+  });
+  const aids = new Set(L.map(a => a.aid));
+  const singles = preds.filter(p => p.src === 'single' && p.aid && aids.has(p.aid)), mine = singles.filter(p => !p.virtual);
+  const conf = L.filter(a => a.bets.some(isMine)).reverse(), fresh = L.filter(a => !a.bets.some(isMine)).reverse();
+  let h = tallyHtml('Мои ставки (подтверждённые):', tally(mine.map(p => p.state))) + moneyRow('💰 Мои ставки:', moneySum(mine.map(predMoney))) + tallyHtml('Все прогнозы ИИ (включая неподтверждённые):', tally(singles.map(p => p.state)));
+  const sets = [['mine', '⭐ Мои ставки'], ['all', '🤖 Все прогнозы ИИ']].map(([k, l]) => `<button data-accs="${k}" class="${accSet === k ? 'active' : ''}">${l}</button>`).join('');
+  h += accuracyHtml(accSet === 'mine' ? mine : singles, { sets });
+  h += `<details class="man"><summary>🔬 Для продвинутых: честность вероятностей и качество модели</summary>${calibrationHtml(singles)}${qualityHtml()}</details>`;
+  h += `<div class="ex-row">` + [['all', `Все (${L.length})`], ['conf', `⭐ Мои ставки (${conf.length})`], ['new', `Не подтверждены (${fresh.length})`]]
     .map(([k, l]) => `<button data-av="${k}" class="${anView === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
   h += searchBar();
-  h += `<div class="hint">Нажали «Подтвердить»: такая ставка попадает в «⭐ Мои ставки», и программа сама следит за матчем и проставляет результат. Остальные прогнозы ИИ в этом разборе не отслеживаются как ваши ставки.</div>`;
-  if (!list.length) return h + `<div class="status-msg">Анализов пока нет. Откройте любой матч и нажмите «⚡ AI Анализ матча».</div>`;
-  if (anView !== 'new'){
-    h += `<div class="top-sec">⭐ Мои ставки (${conf.length})</div>` + (conf.length ? conf.slice(0, 100).map(analysisCard).join('') : `<div class="status-msg">Пока нет подтверждённых ставок.</div>`);
-  }
-  if (anView !== 'conf'){
-    h += `<div class="top-sec">🤖 Разборы без подтверждения (${fresh.length})</div>` + (fresh.length ? fresh.slice(0, 100).map(analysisCard).join('') : `<div class="status-msg">Нет.</div>`);
-  }
+  h += `<div class="hint">Укажите сумму и нажмите «Подтвердить»: ставка попадёт в «⭐ Мои ставки», программа сама проследит за матчем, проставит результат и посчитает выигрыш.</div>`;
+  if (!L.length) return h + `<div class="status-msg">${analyses.length ? 'По фильтру ничего не найдено.' : 'Анализов пока нет. Откройте любой матч и нажмите «⚡ AI Анализ матча».'}</div>`;
+  if (anView !== 'new') h += `<div class="top-sec">⭐ Мои ставки (${conf.length})</div>` + (conf.length ? conf.slice(0, 100).map(analysisCard).join('') : `<div class="status-msg">Пока нет подтверждённых ставок.</div>`);
+  if (anView !== 'conf') h += `<div class="top-sec">🤖 Разборы без подтверждения (${fresh.length})</div>` + (fresh.length ? fresh.slice(0, 100).map(analysisCard).join('') : `<div class="status-msg">Нет.</div>`);
   return h;
 }
+function renderAnalyses(){ return hfBar() + `<div id="hBody">${anBody()}</div>`; }
 
 /* ----- сервер слежения: ловит итоги, пока приложение закрыто ----- */
 const trackerBase = () => (($('trackerUrl') && $('trackerUrl').value) || '').trim().replace(/\/$/, '');
@@ -3491,7 +3772,7 @@ function searchBar(){
   let h = '';
   if (resInfo) h += `<div class="hint" style="text-align:left">📋 ${esc(resInfo)}</div>`;
   if (geminiDown && Date.now() - geminiDown.at < 2 * 3600e3) h += `<div class="srv-note">⚠️ Поиск итогов через ${esc(aiName(searchProv() || aiCfg.prov))} не работает: ${esc(friendlyGemini(geminiDown.msg))}</div>`;
-  if (unknownAny && !trackerOk) h += `<div class="srv-note">Слежение за итогами на сервере пока не работает: обновите бэкенд (server.js и tracker-core.js на GitHub). Без него итоги ловятся, только пока приложение открыто.</div>`;
+  if (unknownAny && !trackerOk && !resOk) h += `<div class="srv-note">Слежение за итогами на сервере пока не работает: обновите бэкенд (server.js и tracker-core.js на GitHub). Без него итоги ловятся, только пока приложение открыто.</div>`;
   if (n) h += `<div class="cf-row"><button class="cf-btn" data-sact="search">🔎 Узнать итоги через интернет (матчей: ${n})</button></div>`;
   return h;
 }
@@ -3596,7 +3877,10 @@ function renderStats(){
   const pr = readPeriod(), pm = new Map(preds.map(p => [p.pid, p]));
   const cp = tally(preds.filter(p => p.src === 'single' && !p.virtual && inPer(p.at, pr)).map(p => p.state));
   const ce = tally(exps.filter(e => inPer(e.at, pr)).map(e => expStatus(e, pm)));
-  $('stBody').innerHTML = tallyHtml('Анализы матчей (подтверждённые):', cp) + tallyHtml('Экспрессы:', ce);
+  const ms = moneySum(preds.filter(p => p.src === 'single' && !p.virtual && inPer(p.at, pr)).map(predMoney));
+  const me = moneySum(exps.filter(e => inPer(e.at, pr)).map(e => expMoney(e, pm)));
+  const mt = { staked: ms.staked + me.staked, ret: ms.ret + me.ret, inPlay: ms.inPlay + me.inPlay, potential: ms.potential + me.potential, n: ms.n + me.n, np: ms.np + me.np }; mt.profit = mt.ret - mt.staked; mt.roi = mt.staked ? mt.profit / mt.staked : null;
+  $('stBody').innerHTML = tallyHtml('Анализы матчей (подтверждённые):', cp) + tallyHtml('Экспрессы:', ce) + moneyRow('💰 Одиночные:', ms) + moneyRow('💰 Экспрессы:', me) + ((ms.n || ms.np) && (me.n || me.np) ? moneyRow('💰 Итого:', mt) : '');
 }
 function initStats(){
   loadStore();
@@ -3608,6 +3892,7 @@ function initStats(){
 }
 
 /* ----- вкладка «Мои экспрессы» ----- */
+const plural = (n, a, b, c) => { const k = Math.abs(n) % 100, j = k % 10; return k > 10 && k < 20 ? c : j === 1 ? a : j >= 2 && j <= 4 ? b : c; };
 const fmtDT = ts => new Date(ts).toLocaleString([], { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
 /* Обратный отсчёт до конца матча (оценка). Футбол: по таймеру Fonbet. Другие виды спорта: по типичной длительности от начала */
 const DUR = { football: 6600, hockey: 9000, basket: 8100, volley: 6300 };
@@ -3647,7 +3932,7 @@ const cdSpan = m => { const c = cdText(m); return c ? ` · ⏳ <span class="cd" 
 function liveLine(p){
   const m = matchById[p.mid];
   if (m){
-    if (m.status === 'live') return `🔴 <span class="live-timer" data-id="${esc(m.id)}">${esc(fmtTimer(m, false))}</span> · ${esc(m.score)}${cdSpan(m)}`;
+    if (m.status === 'live') return `🔴 <span class="live-timer" data-id="${esc(m.id)}">${esc(fmtTimer(m, false))}</span> · <span class="sc-live" data-id="${esc(m.id)}">${esc(m.score)}</span>${cdSpan(m)}`;
     if (m.status === 'upcoming') return `📅 ${esc(fmtStart(m))}${cdSpan(m)}`;
     return `🏁 ${esc(p.final || m.score)}`;
   }
@@ -3672,7 +3957,7 @@ function applyScore(mid, a, b, via){
 function legHtml(p){
   return `<div class="hx-leg ${p.state}" data-omid="${esc(p.mid)}"><div class="hx-m">${p.icon || ''} ${esc(p.t1)} — ${esc(p.t2)} <span class="open-hint">· открыть ›</span></div>
     <div class="hx-b"><b>${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b> → ${esc(p.desc)} · кэф ${esc(p.odd)} · ${RISK[p.risk] || ''}</div>
-    <div class="hx-l">${liveLine(p)} <span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div>
+    <div class="hx-l">${liveLine(p)} <span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div>${p.src !== 'express' && !p.virtual ? `<div class="hx-l">${moneyLine(p)}</div>` : ''}
     ${p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}${p.state !== 'pending' ? `<details class="man"><summary>Исправить вручную</summary>${manualBtns(p)}</details>` : ''}</div>`;
 }
 function expCard(ex, pm, no){
@@ -3680,8 +3965,9 @@ function expCard(ex, pm, no){
   const lost = legs.filter(l => l.state === 'lost');
   const odds = legs.filter(l => l.state !== 'void').reduce((a, l) => a * (Number(l.odd) || 1), 1);
   const BADGE = { won:'✅ ЗАШЁЛ', lost:'❌ НЕ ЗАШЁЛ', pending:'⏳ В игре', unknown:'⚠️ Итог не получен', void:'↩️ Возврат' };
-  return `<div class="hx ${st}"><div class="hx-head"><b>Экспресс #${no} · ${legs.length} событий · ${fmtDT(ex.at)}</b><span class="hx-badge">${BADGE[st]}</span></div>
+  return `<div class="hx ${st}"><div class="hx-head"><b>Экспресс #${no} · ${legs.length} ${plural(legs.length, 'событие', 'события', 'событий')} · ${fmtDT(ex.at)}</b><span class="hx-badge">${BADGE[st]}</span></div>
     <div class="hx-sub">Общий кэф ≈ ${odds.toFixed(2)}${ex.prob ? ` · шанс по модели ≈ ${(ex.prob * 100).toFixed(1)}%` : ''}${legs.filter(l => l.state === 'won').length ? ` · зашло ${legs.filter(l => l.state === 'won').length} из ${legs.length}` : ''}</div>
+    <div class="cf-row">${(() => { const M = expMoney(ex, pm); if (!M) return st === 'pending' ? stakeCtl('ex:' + ex.eid, odds.toFixed(2), '') + ' <span class="hx-n">укажите сумму</span>' : '<span class="hx-n">сумма не указана</span>'; if (M.pending) return stakeCtl('ex:' + ex.eid, odds.toFixed(2), ex.stake); return `<span class="money ${M.profit > 0 ? 'good' : M.profit < 0 ? 'bad' : ''}">💰 ${rub(M.stake)} · ${M.profit > 0.004 ? 'выигрыш ' + rub(M.ret) + ' (' + sgnRub(M.profit) + ')' : M.profit < -0.004 ? sgnRub(M.profit) : 'возврат ' + rub(M.ret)}</span>`; })()}</div>
     ${lost.length ? `<div class="hx-lost">❌ Не зашло (${lost.length}):<br>${lost.map(l => '• ' + esc(l.t1 + ' — ' + l.t2 + ': ставка ' + l.market + ' (' + (l.desc || '') + '). ' + (explainPred(l) || ''))).join('<br>')}</div>` : ''}
     ${legs.map(legHtml).join('')}<button class="hx-del" data-hact="delex" data-eid="${esc(ex.eid)}">🗑 Удалить</button></div>`;
 }
@@ -3692,20 +3978,32 @@ function breakdownHtml(ps){
   const out = rows.map(([n, f]) => { const c = tally(ps.filter(f).map(p => p.state)); return c.won + c.lost ? `<div class="bd-row"><span>${n}</span><span>✅ ${c.won} · ❌ ${c.lost} · ${c.pct}%</span></div>` : ''; }).join('');
   return `<div class="bd"><b>Точность по типам ставок</b>${out || '<div class="hint" style="text-align:left">Пока нет завершённых прогнозов.</div>'}</div>`;
 }
-function renderHistory(){
-  const q = $('searchInput').value.trim().toLowerCase(), pr = readPeriod();
-  const pm = new Map(preds.map(p => [p.pid, p]));
-  const hit = p => !q || (p.t1 + ' ' + p.t2 + ' ' + p.league).toLowerCase().includes(q);
-  const exL = exps.filter(e => inPer(e.at, pr) && e.legs.map(id => pm.get(id)).filter(Boolean).some(hit));
-  const resOk = st => histRes === 'all' || (histRes === 'pending' ? (st === 'pending' || st === 'unknown') : st === histRes);
-  let h = `<div class="ex-row">` + [['all', `Все (${exL.length})`], ['won', '✅ Зашли'], ['lost', '❌ Не зашли'], ['pending', '⏳ Ожидают']].map(([k, l]) => `<button data-hr="${k}" class="${histRes === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
-  h += breakdownHtml(preds.filter(p => p.src === 'express' && inPer(p.at, pr)));
+function sizeHtml(exL, pm){
+  const B = [[1, 3, '2–3 события'], [4, 5, '4–5 событий'], [6, 9, '6–9 событий'], [10, 999, '10 и больше']];
+  const rows = B.map(([a, b, l]) => {
+    const xs = exL.filter(e => e.legs.length >= a && e.legs.length <= b); if (!xs.length) return '';
+    const c = tally(xs.map(e => expStatus(e, pm))), M = moneySum(xs.map(e => expMoney(e, pm)));
+    return `<div class="bd-row"><span>${l}</span><span>✅ ${c.won} · ❌ ${c.lost}${c.pct !== null ? ' · ' + c.pct + '%' : ''}${M.n ? ` · <b class="${M.profit >= 0 ? 'good' : 'bad'}">${sgnRub(M.profit)}</b>` : ''}${c.pending ? ' · ⏳ ' + c.pending : ''}</span></div>`;
+  }).join('');
+  return rows ? `<div class="bd"><b>Экспрессы по числу событий</b>${rows}</div>` : '';
+}
+function histBody(){
+  const rg = hfRange(), pm = new Map(preds.map(p => [p.pid, p]));
+  const exL = exps.filter(e => {
+    const legs = e.legs.map(id => pm.get(id)).filter(Boolean);
+    const t = legs.length ? Math.min(...legs.map(evTime)) : e.at;
+    return t >= rg.from && t <= rg.to && hfMatchQ(legs.map(hfText).join(' ')) && hfResOk(expStatus(e, pm));
+  });
+  const legsAll = []; exL.forEach(e => e.legs.forEach(id => { const p = pm.get(id); if (p) legsAll.push(p); }));
+  let h = tallyHtml('Экспрессы:', tally(exL.map(e => expStatus(e, pm)))) + moneyRow('💰 Экспрессы:', moneySum(exL.map(e => expMoney(e, pm))));
+  h += sizeHtml(exL, pm) + accuracyHtml(legsAll, { title: 'событий в экспрессах' });
   h += searchBar();
-  h += `<div class="hint">Здесь только экспрессы. Разборы отдельных матчей находятся во вкладке «🔍 Анализ матча». Период выбирается в блоке «Аналитика» вверху. Результаты проставляются автоматически.</div>`;
-  const list = exL.filter(e => resOk(expStatus(e, pm))).slice().reverse();
-  h += list.length ? list.slice(0, 100).map(e => expCard(e, pm, exps.indexOf(e) + 1)).join('') : `<div class="status-msg">Экспрессов нет. Соберите экспресс во вкладке «🎯 Экспресс», он сохранится здесь.</div>`;
+  h += `<div class="hint">Здесь подтверждённые экспрессы. Разборы отдельных матчей — во вкладке «🔍 Анализ матча». Результаты и выигрыш проставляются автоматически.</div>`;
+  const list = exL.slice().reverse();
+  h += list.length ? list.slice(0, 100).map(e => expCard(e, pm, exps.indexOf(e) + 1)).join('') : `<div class="status-msg">${exps.length ? 'По фильтру экспрессов нет.' : 'Экспрессов нет. Соберите экспресс во вкладке «🎯 Экспресс» и нажмите «✅ Подтвердить экспресс».'}</div>`;
   return h;
 }
+function renderHistory(){ return hfBar() + `<div id="hBody">${histBody()}</div>`; }
 function handleHistAct(b){
   const a = b.dataset.hact;
   if (a === 'set'){
