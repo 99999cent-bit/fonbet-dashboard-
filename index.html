@@ -227,6 +227,7 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
   <div class="ai-title">🤖 Анализ: <span class="ai-nm">Gemini</span></div>
   <div class="ai-content" id="aiOutput">Вставьте ключ, нажмите «Проверить ключ», выберите модель. Нажмите на матч, чтобы увидеть подробности.</div>
   <button class="btn-ai-all" id="btnTop">🔥 Найти 3 лучшие ставки из Лайва</button>
+  <button class="btn-ai-all" id="btnTopUp" style="background:#4fc3f7;margin-top:6px">📅 Лучшие ставки из Будущих (24 часа)</button>
 </div>
 
 <div class="feed" id="feed" style="display:none"></div>
@@ -308,6 +309,8 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
     <div class="hint" id="trackerStatus" style="text-align:left">Обычно заполнять не нужно: слежение за итогами встроено в ваш бэкенд (server.js). Адрес нужен только если вы подняли отдельный сервер из папки tracker.</div>
     <div class="d-title" style="margin-top:14px">Слежение за матчами</div>
     <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="wakeChk"> 📱 Не выключать экран, пока открыта страница</label>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="notifChk"> 🔔 Уведомлять об итогах моих ставок и изменениях составов</label>
+    <div class="hint" id="notifNote" style="text-align:left"></div>
     <div class="hint" id="wakeNote" style="text-align:left">Результаты ставок проставляются, пока страница открыта и активна. Если экран гаснет или страница уходит в фон, браузер приостанавливает слежение.</div>
     <div class="hint" id="histInfo" style="text-align:left"></div>
   </div>
@@ -359,12 +362,13 @@ window.addEventListener('load', () => {
   $('backendUrl').addEventListener('change', saveConfig);
   $('modelSelect').addEventListener('change', saveConfig);
   initSettings();
-  initAiSettings(); updAnHint();
+  initAiSettings(); updAnHint(); initNotif(); notifyChanges();
   $('arcDays').value = String(arcDepth());
   $('arcDays').addEventListener('change', () => { localStorage.setItem('fb_arc_days', $('arcDays').value); archiveSync(); });
   setTimeout(archiveSync, 5000); setInterval(archiveSync, 20 * 60e3);
   $('btnRefresh').addEventListener('click', () => loadOdds());
-  $('btnTop').addEventListener('click', analyzeTopLine);
+  $('btnTop').addEventListener('click', () => analyzeTopLine('live'));
+  $('btnTopUp').addEventListener('click', () => analyzeTopLine('upcoming'));
   $('searchInput').addEventListener('input', () => { visibleLimit = 60; renderMatches(); });
   $('intervalSelect').addEventListener('change', () => { saveConfig(); scheduleNext(); });
   $('btnPause').addEventListener('click', togglePause);
@@ -2511,7 +2515,7 @@ async function lineupRecheck(){
     const fresh = imp.filter(x => !oldN.has(normName(x.player)));
     const lu = rec.data && rec.data.lineups;
     let msg = `🔄 Составы перепроверены за ${Math.round((A.ms * 1000 - now) / 60000)} мин до начала${lu && lu.confirmed ? ' (составы подтверждены)' : ''}${afb && Array.isArray(afb.lineups) && afb.lineups.length ? ', официальные составы опубликованы' : ''}.`;
-    if (fresh.length){ msg += ' ⚠️ Новые важные отсутствия: ' + fresh.map(x => `${x.team}: ${x.player}${x.role ? ' (' + x.role + ')' : ''}`).join('; ') + '. Решите, оставлять ли ставку.'; toast(`⚠️ ${A.t1} — ${A.t2}: изменился состав, проверьте ставку`); }
+    if (fresh.length){ msg += ' ⚠️ Новые важные отсутствия: ' + fresh.map(x => `${x.team}: ${x.player}${x.role ? ' (' + x.role + ')' : ''}`).join('; ') + '. Решите, оставлять ли ставку.'; toast(`⚠️ ${A.t1} — ${A.t2}: изменился состав, проверьте ставку`); notify('⚠️ Изменился состав', `${A.t1} — ${A.t2}: ` + fresh.map(x => x.player).join(', ') + ' не сыграет'); }
     else msg += ' Новых важных отсутствий нет.';
     A.recheck = msg;
     A.bets.forEach(b => { const p = predOf(b); if (p && !p.virtual && p.state === 'pending') p.note = msg; });
@@ -2819,7 +2823,44 @@ function loadStore(){
   const get = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v || d; } catch (e){ return d; } };
   preds = get('fb_preds', []); exps = get('fb_exps', []); track = get('fb_track', {}); analyses = get('fb_analyses', []); hist = get('fb_hist', []);
 }
+let swReg = null, notifState = null;
+function initNotif(){
+  const chk = $('notifChk'), note = $('notifNote'); if (!chk) return;
+  if (!('Notification' in window)){ chk.disabled = true; note.textContent = 'Этот браузер не поддерживает уведомления. На iPhone они работают, только если добавить страницу на экран «Домой».'; return; }
+  chk.checked = localStorage.getItem('fb_notif') === '1' && Notification.permission === 'granted';
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').then(r => { swReg = r; }).catch(() => {});
+  note.textContent = 'Приходят, пока страница открыта (в том числе в фоне, если браузер её не выгрузил). Для итогов при закрытой странице: открывайте её, и программа сама проверит результаты.';
+  chk.addEventListener('change', async () => {
+    if (chk.checked){
+      let perm = Notification.permission;
+      if (perm !== 'granted'){ try { perm = await Notification.requestPermission(); } catch (e){} }
+      if (perm !== 'granted'){ chk.checked = false; note.textContent = 'Браузер запретил уведомления: разрешите их в настройках сайта (значок замка в адресной строке).'; }
+    }
+    localStorage.setItem('fb_notif', chk.checked ? '1' : '0');
+    if (chk.checked) notify('🔔 Уведомления включены', 'Сообщу, когда ваши ставки сыграют или изменятся составы.');
+  });
+}
+async function notify(title, body){
+  try { if (navigator.vibrate) navigator.vibrate(200); } catch (e){}
+  if (localStorage.getItem('fb_notif') !== '1' || !('Notification' in window) || Notification.permission !== 'granted') return false;
+  try {
+    const reg = swReg || (navigator.serviceWorker && await navigator.serviceWorker.getRegistration());
+    if (reg && reg.showNotification){ await reg.showNotification(title, { body, tag: (title + body).slice(0, 60) }); return true; }
+    new Notification(title, { body }); return true;
+  } catch (e){ return false; }
+}
+/* сравниваем состояния подтверждённых ставок: при переходе «ожидает → зашла/не зашла/возврат» шлём уведомление */
+function notifyChanges(){
+  const first = notifState === null; if (first) notifState = {};
+  preds.forEach(p => {
+    if (p.virtual) return;
+    const prev = notifState[p.pid]; notifState[p.pid] = p.state;
+    if (first || prev !== 'pending' || p.state === 'pending' || !['won', 'lost', 'void'].includes(p.state)) return;
+    notify(p.state === 'won' ? '✅ Ставка зашла' : p.state === 'lost' ? '❌ Ставка не зашла' : '↩️ Возврат ставки', `${p.t1} — ${p.t2}: ${(p.sub ? p.sub + ': ' : '') + p.market}${p.final ? ' · счёт ' + p.final : ''}${p.src === 'express' ? ' (экспресс)' : ''}`);
+  });
+}
 function saveStore(){
+  try { notifyChanges(); } catch (e){}
   try {
     localStorage.setItem('fb_preds', JSON.stringify(preds.slice(-3000)));
     localStorage.setItem('fb_exps', JSON.stringify(exps.slice(-400)));
@@ -3472,28 +3513,34 @@ function handleHistAct(b){
   saveStore(); renderStats(); renderAll();
 }
 
-async function analyzeTopLine(){
-  const out = $('aiOutput');
-  const live = parsedMatches.filter(m => m.status === 'live' && Object.keys(m.odds).length > 0 && m.tier >= 0);
-  if (!live.length){ out.textContent = 'Сейчас нет матчей в лайве.'; return; }
-  out.textContent = `⏳ Считаю модель по ${live.length} лайв-матчам...`;
+async function analyzeTopLine(scope){
+  scope = scope === 'upcoming' ? 'upcoming' : 'live';
+  const out = $('aiOutput'), nowS = Date.now() / 1000, up = scope === 'upcoming';
+  let list = parsedMatches.filter(m => m.status === scope && Object.keys(m.odds).length > 0 && m.tier >= 0 && (!up || (m.start > nowS && m.start - nowS < 24 * 3600)));
+  if (!list.length){ out.textContent = up ? 'Нет будущих матчей на ближайшие 24 часа.' : 'Сейчас нет матчей в лайве.'; return; }
+  list = list.sort((a, b) => topScore(b) - topScore(a)).slice(0, up ? 400 : 150);
+  out.textContent = `⏳ Считаю модель по ${list.length} ${up ? 'будущим' : 'лайв-'} матчам...`;
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  await new Promise(r => setTimeout(r, 30));
   const cands = [];
-  live.slice(0, 150).forEach(m => {
-    const M = modelFor(m); if (!M) return;
+  for (let i = 0; i < list.length; i++){
+    if (i % 25 === 0) await new Promise(r => setTimeout(r, 0));
+    const m = list[i], M = modelFor(m); if (!M) continue;
+    if (up && !M.w) continue;   // без статистики архива модель повторяет рынок: выгоды не найти
     Object.entries(M.probs).forEach(([k, v]) => { const odd = Number(m.odds[k]); if (odd >= 1.3 && odd <= 5 && v.p >= 0.3) cands.push({ m, k, p: v.p, pm: v.pm, odd, ev: evOf(v.p, v.push, odd), w: M.w }); });
-  });
+  }
   cands.sort((a, b) => b.ev - a.ev);
   const seen = new Set(), top = [];
   for (const c of cands){ if (seen.has(c.m.id)) continue; seen.add(c.m.id); top.push(c); if (top.length >= 10) break; }
-  const line = c => `${c.m.sportIcon} ${c.m.league} · ${c.m.team1} — ${c.m.team2} (${c.m.score}, ${fmtTimer(c.m, false)}): ${c.k} кэф ${c.odd} · модель ${pct(c.p)}, рынок ${pct(c.pm)} · выгода ${c.ev >= 0 ? '+' : ''}${Math.round(c.ev * 100)}%${c.w ? '' : ' (без статистики архива)'}`;
-  if (!top.length){ out.textContent = 'Модель не построилась ни для одного лайв-матча (нет основных коэффициентов).'; return; }
-  if ($('anMode').value === 'math' || !keyOrder().length || !modelOf(aiCfg.prov)){
-    out.textContent = '📐 Лучшие лайв-ставки по модели (без ИИ):\n' + top.slice(0, 3).map((c, i) => (i + 1) + '. ' + line(c)).join('\n') + '\n\nВыгода по модели — это не гарантия: модель знает только коэффициенты и статистику архива.';
+  const line = c => `${c.m.sportIcon} ${c.m.league} · ${c.m.team1} — ${c.m.team2} (${up ? fmtStart(c.m) : c.m.score + ', ' + fmtTimer(c.m, false)}): ${c.k} кэф ${c.odd} · модель ${pct(c.p)}, рынок ${pct(c.pm)} · выгода ${c.ev >= 0 ? '+' : ''}${Math.round(c.ev * 100)}%${c.w ? '' : ' (без статистики архива)'}`;
+  if (!top.length){
+    out.textContent = up ? 'Модель не нашла кандидатов: для будущих матчей ей нужна статистика команд из архива Фонбета. ' + (ARC.info || 'Архив ещё загружается (⚙️ → Архив итогов Фонбета).') : 'Модель не построилась ни для одного лайв-матча (нет основных коэффициентов).';
     return;
   }
-  callGemini(`Ты аналитик лайв-ставок. Программа посчитала модель (рынок без маржи + статистика архива Фонбета) по всем лайв-матчам и отобрала кандидатов с наибольшей выгодой. Выбери 3 лучшие ставки: можно эти или другие рынки этих же матчей. Учитывай счёт, время и надёжность, не бери ставки с отрицательной выгодой без веской причины. Для каждой напиши: матч, ставка, кэф, вероятность и почему. Кратко, по-русски.\nКандидаты:\n${top.map(c => '- ' + line(c) + ' | все кэфы: ' + JSON.stringify(c.m.odds).slice(0, 300)).join('\n')}`);
+  if ($('anMode').value === 'math' || !keyOrder().length || !modelOf(aiCfg.prov)){
+    out.textContent = `📐 Лучшие ${up ? 'ставки на будущие матчи' : 'лайв-ставки'} по модели (без ИИ):\n` + top.slice(0, up ? 5 : 3).map((c, i) => (i + 1) + '. ' + line(c)).join('\n') + '\n\nВыгода по модели — не гарантия: модель знает только коэффициенты и статистику архива Фонбета. Перед ставкой откройте матч и сделайте глубокий анализ.';
+    return;
+  }
+  callGemini(`Ты аналитик ставок. Программа посчитала модель (рынок без маржи + статистика архива Фонбета) по ${up ? 'будущим матчам на ближайшие 24 часа' : 'всем лайв-матчам'} и отобрала кандидатов с наибольшей выгодой. Выбери 3 лучшие ставки: можно эти или другие рынки этих же матчей. ${up ? 'Учитывай уровень турнира и надёжность данных.' : 'Учитывай счёт, время и надёжность.'} Не бери ставки с отрицательной выгодой без веской причины. Для каждой напиши: матч, ставка, кэф, вероятность и почему. Кратко, по-русски.\nКандидаты:\n${top.map(c => '- ' + line(c) + ' | все кэфы: ' + JSON.stringify(c.m.odds).slice(0, 300)).join('\n')}`);
 }
 
 </script>
