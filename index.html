@@ -313,6 +313,10 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
     <div class="hint" id="notifNote" style="text-align:left"></div>
     <div class="hint" id="wakeNote" style="text-align:left">Результаты ставок проставляются, пока страница открыта и активна. Если экран гаснет или страница уходит в фон, браузер приостанавливает слежение.</div>
     <div class="hint" id="histInfo" style="text-align:left"></div>
+    <div class="d-title" style="margin-top:14px">💾 Перенос на другое устройство</div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="expKeys" checked> Включить в файл ключи ИИ и API-Football</label>
+    <div class="ex-row"><button id="btnExport">📤 Сохранить всё в файл</button><button id="btnImport">📥 Загрузить из файла</button><input type="file" id="impFile" accept=".json,application/json" style="display:none"></div>
+    <div class="hint" id="expNote" style="text-align:left">Сохраняются настройки, ключи (по желанию), ставки, экспрессы и разборы. На другом устройстве нажмите «Загрузить из файла»: ставки объединятся, настройки и ключи заменятся. Файл с ключами храните как пароль. Архив Фонбета в файл не входит: он скачается заново.</div>
   </div>
 </div>
 <div class="modal" id="matchModal" style="display:none">
@@ -363,6 +367,9 @@ window.addEventListener('load', () => {
   $('modelSelect').addEventListener('change', saveConfig);
   initSettings();
   initAiSettings(); updAnHint(); initNotif(); notifyChanges();
+  $('btnExport').addEventListener('click', exportAll);
+  $('btnImport').addEventListener('click', () => $('impFile').click());
+  $('impFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) importAll(f); e.target.value = ''; });
   $('arcDays').value = String(arcDepth());
   $('arcDays').addEventListener('change', () => { localStorage.setItem('fb_arc_days', $('arcDays').value); archiveSync(); });
   setTimeout(archiveSync, 5000); setInterval(archiveSync, 20 * 60e3);
@@ -1185,6 +1192,7 @@ function loadAi(){
   kOpen.add(aiCfg.prov);
 }
 function saveAi(){
+  if (typeof importLock !== 'undefined' && importLock) return;
   try {
     localStorage.setItem('fb_ai', JSON.stringify(aiCfg));
     localStorage.setItem('fb_ai_keys', JSON.stringify(aiKeys));
@@ -1392,12 +1400,21 @@ async function aiRequest(prompt, o = {}){
   for (const p of order){
     const model = modelOf(p);
     if (!model){ lastErr = new Error(`⚠️ Выберите модель ${aiName(p)} (кнопка «Проверить ключи» в ⚙️).`); continue; }
-    try {
-      const r = await aiCall(p, model, prompt, o);
-      r.prov = p; r.model = model;
-      if (p !== main){ r.fellTo = p; toast(`🔁 ${aiName(main)} недоступен, ответил ${aiName(p)}`); }
-      return r;
-    } catch (e){ lastErr = e; if (!['keys', 'nokeys', 'net'].includes(e.code)) throw e; }
+    let moveOn = false;
+    for (let attempt = 0; attempt < 2 && !moveOn; attempt++){
+      try {
+        const r = await aiCall(p, model, prompt, o);
+        r.prov = p; r.model = model;
+        if (p !== main){ r.fellTo = p; toast(`🔁 ${aiName(main)} недоступен, ответил ${aiName(p)}`); }
+        return r;
+      } catch (e){
+        lastErr = e;
+        const busy = /overload|unavailable|\b503\b|\b529\b|temporarily|high demand|try again later|перегруж/i.test(e.message);
+        if (busy && attempt === 0){ toast(`⏳ ${aiName(p)} перегружен, повторяю через 3 с...`); await new Promise(r => setTimeout(r, 3000)); continue; }
+        if (!busy && !['keys', 'nokeys', 'net'].includes(e.code)) throw e;
+        moveOn = true;
+      }
+    }
   }
   throw lastErr || new Error('⚠️ Нет доступного ИИ');
 }
@@ -1670,7 +1687,7 @@ function aiBox(m){
 
 /* ----- база итогов: приложение запоминает итоговые счета матчей, которые видело ----- */
 let histTimer = null;
-function saveHistSoon(){ clearTimeout(histTimer); histTimer = setTimeout(() => { try { localStorage.setItem('fb_hist', JSON.stringify(hist.slice(-4000))); } catch (e){} }, 2000); }
+function saveHistSoon(){ clearTimeout(histTimer); histTimer = setTimeout(() => { if (importLock) return; try { localStorage.setItem('fb_hist', JSON.stringify(hist.slice(-4000))); } catch (e){} }, 2000); }
 function addResult(mm, a, b){
   if (!mm || isNaN(a) || isNaN(b)) return;
   const id = String(mm.id); if (hist.some(h => h.id === id)) return;
@@ -2823,6 +2840,54 @@ function loadStore(){
   const get = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v || d; } catch (e){ return d; } };
   preds = get('fb_preds', []); exps = get('fb_exps', []); track = get('fb_track', {}); analyses = get('fb_analyses', []); hist = get('fb_hist', []);
 }
+/* ----- перенос данных между устройствами ----- */
+const EXP_SKIP = /^fb_(open|scout|afb_used)$/, KEY_ITEMS = /^fb_(ai_keys|ai_idx|keys|key_idx|gemini)$/;
+const MERGE_ID = { fb_preds: 'pid', fb_exps: 'eid', fb_analyses: 'aid', fb_hist: 'id' };
+function exportAll(){
+  const withKeys = $('expKeys').checked, out = { app: 'fonbet-ai-predictor', v: 1, at: new Date().toISOString(), keys: withKeys, data: {} };
+  saveStore(); saveAi();
+  for (let i = 0; i < localStorage.length; i++){
+    const k = localStorage.key(i);
+    if (!/^fb_/.test(k) || EXP_SKIP.test(k) || (!withKeys && KEY_ITEMS.test(k))) continue;
+    out.data[k] = localStorage.getItem(k);
+  }
+  const blob = new Blob([JSON.stringify(out)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `fonbet-ai-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  $('expNote').textContent = `✅ Файл сохранён: ${Object.keys(out.data).length} разделов, ставок ${preds.length}${withKeys ? ', с ключами (храните как пароль)' : ', без ключей'}.`;
+  return out;
+}
+function importData(j){
+  if (!j || j.app !== 'fonbet-ai-predictor' || !j.data || typeof j.data !== 'object') throw new Error('это не файл этой программы');
+  let n = 0;
+  Object.keys(j.data).filter(k => /^fb_/.test(k) && !EXP_SKIP.test(k)).forEach(k => {
+    const v = String(j.data[k]), id = MERGE_ID[k];
+    if (id){
+      let mine = [], theirs = [];
+      try { mine = JSON.parse(localStorage.getItem(k) || '[]') || []; } catch (e){}
+      try { theirs = JSON.parse(v) || []; } catch (e){}
+      const map = new Map(); mine.concat(theirs).forEach(x => { if (x && x[id] !== undefined){ const o = map.get(x[id]); if (!o || (o.state === 'pending' && x.state && x.state !== 'pending') || (!o.final && x.final)) map.set(x[id], x); } });
+      const arr = [...map.values()].sort((a, b) => (a.at || 0) - (b.at || 0));
+      localStorage.setItem(k, JSON.stringify(arr));
+    } else localStorage.setItem(k, v);
+    n++;
+  });
+  return n;
+}
+function importAll(file){
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const j = JSON.parse(rd.result);
+      if (window.confirm && !window.confirm(`Загрузить данные из файла от ${String(j.at || '').slice(0, 10)}? Ставки объединятся с текущими, настройки${j.keys ? ' и ключи' : ''} заменятся.`)) return;
+      saveStore(); importLock = true;
+      const n = importData(j);
+      $('expNote').textContent = `✅ Загружено разделов: ${n}. Перезапускаю...`; toast('✅ Данные загружены, перезапускаю...');
+      setTimeout(() => location.reload(), 900);
+    } catch (e){ $('expNote').textContent = '❌ Не удалось загрузить: ' + e.message; }
+  };
+  rd.readAsText(file);
+}
 let swReg = null, notifState = null;
 function initNotif(){
   const chk = $('notifChk'), note = $('notifNote'); if (!chk) return;
@@ -2859,7 +2924,9 @@ function notifyChanges(){
     notify(p.state === 'won' ? '✅ Ставка зашла' : p.state === 'lost' ? '❌ Ставка не зашла' : '↩️ Возврат ставки', `${p.t1} — ${p.t2}: ${(p.sub ? p.sub + ': ' : '') + p.market}${p.final ? ' · счёт ' + p.final : ''}${p.src === 'express' ? ' (экспресс)' : ''}`);
   });
 }
+let importLock = false;
 function saveStore(){
+  if (importLock) return;
   try { notifyChanges(); } catch (e){}
   try {
     localStorage.setItem('fb_preds', JSON.stringify(preds.slice(-3000)));
