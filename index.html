@@ -225,7 +225,7 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
 
 <div class="ai-panel">
   <div class="ai-title">🤖 Анализ: <span class="ai-nm">Gemini</span></div>
-  <div class="ai-content" id="aiOutput">Вставьте ключ, нажмите «Проверить ключ», выберите модель. Нажмите на матч, чтобы увидеть подробности.</div>
+  <div class="ai-content" id="aiOutput">Ключи ИИ добавляются в ⚙️, ИИ и модель выбираются выше. Нажмите на матч, чтобы увидеть коэффициенты, модель и статистику Фонбета, и «⚡ AI Анализ матча» для разбора.</div>
   <button class="btn-ai-all" id="btnTop">🔥 Найти 3 лучшие ставки из Лайва</button>
   <button class="btn-ai-all" id="btnTopUp" style="background:#4fc3f7;margin-top:6px">📅 Лучшие ставки из Будущих (24 часа)</button>
 </div>
@@ -1809,6 +1809,7 @@ function factsHtml(r, d){
   if (r.critic && r.critic.notes) h += `<div class="why">🧐 Критик: ${esc(r.critic.notes)}</div>`;
   if (d && Array.isArray(d.facts) && d.facts.length) h += `<div class="why" style="margin:4px 0 8px"><b>Что учтено:</b><br>` + d.facts.slice(0, 8).map(f => '• ' + esc(f)).join('<br>') + `</div>`;
   const c = r.ctx || {}, parts = [c.model, c.move, c.weather].filter(Boolean);
+  if (c.fb) h += `<details class="man"><summary>📊 Статистика Фонбета: таблица, форма, составы</summary><div class="why">${esc(c.fb).replace(/\n/g, '<br>')}</div></details>`;
   if (parts.length || c.afb) h += `<details class="man"><summary>📐 Модель, движение линии${c.weather ? ', погода' : ''}${c.afb ? ', API-Football' : ''}</summary>${parts.map(x => `<div class="why">${esc(x)}</div>`).join('')}${c.afb ? `<div class="why">${esc(c.afb).replace(/\n/g, '<br>')}</div>` : ''}</details>`;
   if (d && d.lineups && (d.lineups.team1 || d.lineups.team2)) h += `<details class="man"><summary>👥 Составы и игроки${d.lineups.confirmed === true ? ' (подтверждены)' : d.lineups.confirmed === false ? ' (не подтверждены)' : ''}</summary>` + [d.lineups.team1, d.lineups.team2].filter(Boolean).map(t => `<div class="why">${esc(String(t))}</div>`).join('') + (Array.isArray(d.key_players) ? d.key_players.slice(0, 14).map(pl => `<div class="why">• ${esc(String(pl.team || ''))} · <b>${esc(String(pl.player || ''))}</b>: ${esc(String(pl.status || ''))}${pl.impact ? ', ' + esc(String(pl.impact)) : ''}</div>`).join('') : '') + `</details>`;
   const S = r.scout;
@@ -1968,7 +1969,7 @@ const r1 = v => Math.round(v * 10) / 10;
 function statsText(name, S, sk){
   if (!S) return `${name}: в архиве Фонбета матчей нет`;
   const u = sk === 'basket' ? 'очков' : sk === 'tennis' || sk === 'tt' || sk === 'volley' ? 'сетов' : 'голов';
-  let t = `${name}: последние ${S.n} матчей (архив Фонбета): В${S.w} Н${S.d} П${S.l}; в среднем забивает ${r1(S.gf / S.n)} и пропускает ${r1(S.ga / S.n)} ${u}`;
+  let t = `${name}: последние ${S.n} матчей (${S.src === 'fonbet' ? 'матч-центр Фонбета, все турниры' : 'архив Фонбета'}): В${S.w} Н${S.d} П${S.l}; в среднем забивает ${r1(S.gf / S.n)} и пропускает ${r1(S.ga / S.n)} ${u}`;
   if (S.home.n) t += `; дома ${S.home.n} матч.: ${r1(S.home.gf / S.home.n)}–${r1(S.home.ga / S.home.n)}`;
   if (S.away.n) t += `; в гостях ${S.away.n} матч.: ${r1(S.away.gf / S.away.n)}–${r1(S.away.ga / S.away.n)}`;
   if (sk === 'football' || sk === 'hockey'){
@@ -2095,21 +2096,28 @@ function elapsedMin(m){
   return sec === null || isNaN(sec) ? null : sec / 60;
 }
 /* сила команд по архиву: средние голы с поправкой на уровень турнира, сжатие к среднему при малой выборке */
+const DEF_AVG = { football: { h: 1.45, a: 1.15 }, hockey: { h: 3.1, a: 2.7 } };
+function lamFrom(A, B, avg){
+  const base = (avg.h + avg.a) / 2 || 1.3, sh = n => n / (n + 6), f = (x, n) => 1 + (x - 1) * sh(n);
+  return { lh: avg.h * f(A.gf / A.n / base, A.n) * f(B.ga / B.n / base, B.n), la: avg.a * f(B.gf / B.n / base, B.n) * f(A.ga / A.n / base, A.n) };
+}
 function statLambdas(m){
+  const X = extStats[m.id];
+  if (X && X.A && X.B){   // статистика матч-центра Фонбета: 10 последних матчей во всех турнирах
+    const avg = X.avg || DEF_AVG[m.sportKey];
+    if (avg) return Object.assign(lamFrom(X.A, X.B, avg), { A: X.A, B: X.B, avg, n: Math.min(X.A.n, X.B.n), src: 'fonbet' });
+  }
   if (!m.t1id || !m.t2id || !ARC.count) return null;
   const before = m.start || Date.now() / 1000;
   const A = teamStats(m.t1id, before, 10), B = teamStats(m.t2id, before, 10);
   if (!A || !B || A.n < 3 || B.n < 3) return { A, B };
   const avg = compAvg(A.comp, m.sportKey); if (!avg) return { A, B };
-  const base = (avg.h + avg.a) / 2 || 1.3, sh = n => n / (n + 6), f = (x, n) => 1 + (x - 1) * sh(n);
-  const lh = avg.h * f(A.gf / A.n / base, A.n) * f(B.ga / B.n / base, B.n);
-  const la = avg.a * f(B.gf / B.n / base, B.n) * f(A.ga / A.n / base, A.n);
-  return { lh, la, A, B, avg, n: Math.min(A.n, B.n) };
+  return Object.assign(lamFrom(A, B, avg), { A, B, avg, n: Math.min(A.n, B.n), src: 'archive' });
 }
 const modelCache = {};
 /* главная функция: вероятности всех основных рынков матча */
 function modelFor(m){
-  const sig = m.id + '|' + JSON.stringify(m.odds) + '|' + m.score + '|' + ARC.count;
+  const sig = m.id + '|' + JSON.stringify(m.odds) + '|' + m.score + '|' + ARC.count + '|' + (extStats[m.id] ? 1 : 0);
   const c = modelCache[m.id]; if (c && c.sig === sig && Date.now() - c.at < 20000) return c.res;
   let res = null;
   try { res = buildModel(m); } catch (e){ res = null; }
@@ -2144,7 +2152,7 @@ function buildModel(m){
       const s = sph ? poisProb(k, sph, spa, live ? a0 : 0, live ? b0 : 0) : null;
       add(k, marketProb(m, k), s ? s.win : null, r.win, r.push);
     });
-    out.notes.push(`Модель Пуассона: ожидаемые ${live ? 'оставшиеся ' : ''}голы ${m.team1} ${r1(lh)}, ${m.team2} ${r1(la)} (по коэффициентам рынка ${r1(fit.lh)}–${r1(fit.la)}${out.slam ? `, по архиву Фонбета ${r1(out.slam[0])}–${r1(out.slam[1])}, вес архива ${Math.round(out.w * 100)}%` : ', архива по командам пока мало'})`);
+    out.notes.push(`Модель Пуассона: ожидаемые ${live ? 'оставшиеся ' : ''}голы ${m.team1} ${r1(lh)}, ${m.team2} ${r1(la)} (по коэффициентам рынка ${r1(fit.lh)}–${r1(fit.la)}${out.slam ? `, по ${S.src === 'fonbet' ? 'статистике матч-центра Фонбета' : 'архиву Фонбета'} ${r1(out.slam[0])}–${r1(out.slam[1])}, вес статистики ${Math.round(out.w * 100)}%` : ', статистики по командам пока нет'})`);
     return out;
   }
   if (sk === 'basket'){
@@ -2378,7 +2386,7 @@ ${M ? 'КАК ПОСЧИТАНО: ' + M.notes.join(' ') : ''}
 СТАТИСТИКА ИЗ АРХИВА ФОНБЕТА (по номерам команд, без путаницы с тёзками):
 ${statsText(m.team1, A, m.sportKey)}
 ${statsText(m.team2, B, m.sportKey)}
-Очные встречи (архив Фонбета): ${hh.length ? hh.map(r => `${r.hn} ${r.x}:${r.y} ${r.an} (${new Date(r.t * 1000).toLocaleDateString('ru-RU')})`).join('; ') : 'нет за период архива'}
+${ctx.F ? 'СТАТИСТИКА МАТЧ-ЦЕНТРА ФОНБЕТА (таблица, форма во всех турнирах, угловые и карточки, составы):\n' + ssisText(ctx.F, m).slice(0, 6000) + '\n' : ''}Очные встречи (архив Фонбета): ${hh.length ? hh.map(r => `${r.hn} ${r.x}:${r.y} ${r.an} (${new Date(r.t * 1000).toLocaleDateString('ru-RU')})`).join('; ') : 'нет за период архива'}
 ${movementText(m)}
 ${log ? 'СОБЫТИЯ МАТЧА ПО ХОДУ:\n' + log : ''}
 ${ctx.afb ? 'API-FOOTBALL:\n' + afbText(ctx.afb) : ''}
@@ -2465,11 +2473,18 @@ async function analyzeSingleMatch(id, force){
   if (cur && (cur.state === 'loading' || (cur.state === 'done' && !force))) return;
   const mode = $('anMode').value, withDetail = $('detailChk').checked, notes = [];
   const stage = t => { const r = aiResults[id]; if (r && r.state === 'loading'){ r.stage = t; renderAll(); } };
-  aiResults[id] = { state: 'loading', stage: '📐 Считаю модель по коэффициентам и архиву...' }; renderAll();
+  aiResults[id] = { state: 'loading', stage: '📊 Статистика Фонбета: таблица, форма, составы...' }; renderAll();
   try {
+    let F = null;
+    try { F = await ssisBundle(m); } catch (e){ notes.push('Статистика матч-центра Фонбета недоступна: ' + e.message); }
+    stage('📐 Считаю модель...');
     const M = modelFor(m);
     let data, scout = null, afb = null, W = null, prov = '', model = '', critic = null;
-    if (mode === 'math') data = mathBets(m, M);
+    if (mode === 'math'){
+      data = mathBets(m, M);
+      const st = F && F.SI ? standingsText(F.SI, [F.P1, F.P2].filter(Boolean).map(x => String(x.id))) : '';
+      if (st) data.facts = data.facts.concat(st.split('\n').slice(1));
+    }
     else {
       if (mode === 'deep' || mode === 'max'){
         const sp = searchProv();
@@ -2485,7 +2500,7 @@ async function analyzeSingleMatch(id, force){
       if (mode !== 'quick' && city && OUTDOOR.includes(m.sportKey) && !(V && V.indoor === true)){
         try { W = await weatherFor(String(city).replace(/\(.*\)/, '').trim(), (V && V.country) || (afb && afb.fx.cn) || '', m.start || Date.now() / 1000); } catch (e){}
       }
-      const ctx = { M, scout, afb, W };
+      const ctx = { M, scout, afb, W, F };
       stage(`🧠 Аналитик (${aiName()}) считает вероятности...`);
       const prompt = buildAnalystPrompt(m, ctx, withDetail);
       const runA = async () => { const r = await aiRequest(prompt, { json: true, thinking: true, temp: 0.3, system: SYS_ANALYST, maxTokens: 8000 }); return { d: parseBets(r.text), r }; };
@@ -2508,7 +2523,7 @@ async function analyzeSingleMatch(id, force){
     if (!data.bets.length && !(data.dropped || []).length) throw new Error('⚠️ ИИ не предложил ни одной ставки. ' + (data.no_bet_reason || 'Нажмите «Пересчитать».'));
     aiResults[id] = { state: 'done', raw: JSON.stringify(data), data, at: Date.now(), score: m.score, mode, prov, model, notes, critic,
       sources: (scout && scout.sources) || [], scoutAt: scout ? scout.at : 0, scoutCached: !!(scout && scout.cached), scout: scout && scout.data ? scout.data : null,
-      ctx: { weather: weatherText(W), afb: afb ? afbText(afb) : '', move: movementText(m), model: M ? M.notes.join(' ') : '' } };
+      ctx: { weather: weatherText(W), afb: afb ? afbText(afb) : '', move: movementText(m), model: M ? M.notes.join(' ') : '', fb: F ? ssisText(F, m) : '' } };
     const A = recordAnalysis(m); if (A) aiResults[id].aid = A.aid;
   } catch (err){ aiResults[id] = { state: 'error', text: err.message }; }
   renderAll();
@@ -2594,6 +2609,131 @@ function qualityHtml(){
     <div class="hint" style="text-align:left">«Цена» — насколько ваш коэффициент был лучше коэффициента перед началом матча: плюс означает, что ставка сделана до того, как рынок сдвинулся в её сторону (признак настоящего перевеса). Насколько программа доверяет мнению ИИ: ${esc(al)}. Доля подбирается сама по итогам (нужно от 25 прогнозов в виде спорта).</div></div></details>`;
 }
 
+/* ================= Статистика матч-центра Фонбета (ssis): форма, таблица, составы ================= */
+const SSIS_HOSTS = ['https://line-lb54-w.bk6bba-resources.com/ma', 'https://line-lb61-w.bk6bba-resources.com/ma', 'https://line-vk01-w.bk6bba-resources.ru', 'https://line-vk02-w.bk6bba-resources.ru'];
+const POS = { 1: 'вратарь', 2: 'защитник', 3: 'полузащитник', 4: 'нападающий' };
+const ssisState = {}, extStats = {};
+function devId(){
+  let d = ''; try { d = localStorage.getItem('fb_devid') || ''; } catch (e){}
+  if (!d){
+    const a = new Uint8Array(16); try { crypto.getRandomValues(a); } catch (e){ for (let i = 0; i < 16; i++) a[i] = Math.floor(Math.random() * 256); }
+    d = [...a].map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+    try { localStorage.setItem('fb_devid', d); } catch (e){}
+  }
+  return d;
+}
+async function ssisGet(kind, id){
+  return cached('ssis|' + kind + '|' + id, 30 * 60e3, async () => {
+    const hosts = SSIS_HOSTS.concat(lastDirect && !SSIS_HOSTS.includes(lastDirect) ? [lastDirect] : []);
+    let last = 'нет ответа';
+    for (const h of hosts){
+      try {
+        const r = await fetch(`${h}/ssis/api/v1/${kind}?eventId=${encodeURIComponent(id)}&sysId=21&deviceId=${devId()}`, { cache: 'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        if (d && d.result === 'OK' && d.response) return d.response;
+        throw new Error((d && d.result) || 'нет данных');
+      } catch (e){ last = e.message; }
+    }
+    throw new Error(last);
+  });
+}
+const nmOf = o => (o && (o.rus || o.eng)) || '';
+const stv = (L, k, stage) => { const s = (L || []).find(x => x.kind === k && (stage ? x.stage === stage : !x.stage)); return s ? Number(s.value) : null; };
+/* форма команды за последние 10 матчей во всех турнирах (в формате статистики архива) */
+function ssisForm(P, before){
+  const opp = {};
+  (P.lastEvents || []).forEach(e => { const o = (e.participants || []).find(q => q.id !== P.id); opp[e.iid] = o ? nmOf(o.name) : '?'; });
+  const rows = (P.lastEventsParticipantStats || []).filter(x => x.eventStartTime < before - 60).sort((a, b) => b.eventStartTime - a.eventStartTime);
+  const S = { n: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, home: { n: 0, gf: 0, ga: 0, w: 0 }, away: { n: 0, gf: 0, ga: 0, w: 0 }, btts: 0, p1: { n: 0, f: 0, a: 0 }, fg: { n: 0, f: 0, min: 0 }, seq: [], ext: {}, last: 0, comp: 'ssis', tot: [], src: 'fonbet', elo: null, eloN: 0 };
+  rows.slice(0, 10).forEach(x => {
+    const gf = stv(x.stats, '30'), ga = stv(x.rivalStats, '30');
+    if (gf === null || ga === null) return;
+    const home = x.participantOrder === 1;
+    S.n++; S.gf += gf; S.ga += ga; S.tot.push(gf + ga);
+    if (gf > ga) S.w++; else if (gf === ga) S.d++; else S.l++;
+    const side = home ? S.home : S.away; side.n++; side.gf += gf; side.ga += ga; if (gf > ga) side.w++;
+    if (gf > 0 && ga > 0) S.btts++;
+    const h1f = stv(x.stats, '30', '1'), h1a = stv(x.rivalStats, '30', '1');
+    if (h1f !== null && h1a !== null){ S.p1.n++; S.p1.f += h1f; S.p1.a += h1a; }
+    [['13', 'угловые'], ['28', 'жёлтые карточки'], ['20', 'красные карточки']].forEach(([k, nm]) => {
+      const f = stv(x.stats, k), a = stv(x.rivalStats, k);
+      if (f !== null && a !== null){ const o = S.ext[nm] || (S.ext[nm] = { n: 0, f: 0, a: 0 }); o.n++; o.f += f; o.a += a; }
+    });
+    if (!S.last) S.last = x.eventStartTime;
+    S.seq.unshift(`${gf > ga ? 'В' : gf === ga ? 'Н' : 'П'} ${gf}:${ga} ${home ? 'дома' : 'в гостях'} — ${opp[x.eventIid] || '?'} (${new Date(x.eventStartTime * 1000).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })})`);
+  });
+  if (!S.n) return null;
+  S.restDays = (before - S.last) / 86400;
+  S.last7 = rows.filter(x => x.eventStartTime > before - 7 * 86400).length;
+  return S;
+}
+function ssisLeagueAvg(SI){
+  const G = SI && SI.eventGroupsStats && SI.eventGroupsStats[0]; if (!G) return null;
+  let h = 0, a = 0, n = 0;
+  (G.events || []).forEach(e => {
+    if (String(e.state) !== '10') return;
+    const P1 = (e.participants || []).find(p => p.order === 1), P2 = (e.participants || []).find(p => p.order === 2);
+    const x = P1 ? stv(P1.stats, '30') : null, y = P2 ? stv(P2.stats, '30') : null;
+    if (x === null || y === null) return; h += x; a += y; n++;
+  });
+  return n >= 10 ? { h: h / n, a: a / n, n } : null;
+}
+function standingsText(SI, ids){
+  const groups = (SI && SI.eventGroupsStats) || []; if (!groups.length) return '';
+  const G = groups.find(g => (g.participantsStats || []).some(x => ids.includes(String(x.participantId)))) || groups[0];
+  const all = G.participantsStats || [], tot = all.filter(x => x.participantOrder === undefined).sort((a, b) => a.stats.rank - b.stats.rank);
+  if (!tot.length) return '';
+  const row = x => `${x.stats.rank}. ${nmOf(x.participantName)} — ${x.stats.points} очк. за ${x.stats.played} игр (В${x.stats.win} Н${x.stats.draw} П${x.stats.loss}), мячи ${x.stats.scored}:${x.stats.missed}`;
+  const side = (id, o) => { const r = all.find(x => String(x.participantId) === id && x.participantOrder === o); return r ? `В${r.stats.win} Н${r.stats.draw} П${r.stats.loss}, ${r.stats.scored}:${r.stats.missed}` : '—'; };
+  const L = [`Таблица «${nmOf(SI.seasonName)}» (${tot.length} команд). Вверху: ${tot.slice(0, 3).map(row).join('; ')}. Внизу: ${row(tot[tot.length - 1])}.`];
+  ids.forEach(id => { const r = tot.find(x => String(x.participantId) === id); if (r) L.push(`${row(r)}; дома ${side(id, 1)}; в гостях ${side(id, 2)}.`); });
+  return L.join('\n');
+}
+function lineupText(LU){
+  return (LU.participants || []).map(P => {
+    const pl = P.players || [], start = pl.filter(p => !p.reserved), bench = pl.filter(p => p.reserved);
+    const ss = p => (p.seasonsPlayerStats || [])[0] || {};
+    const cnt = (p, k) => { const s = (ss(p).stats || []).find(x => x.kind === k); return s ? Number(s.value) : 0; };
+    const fmt = p => `${p.number ? '№' + p.number + ' ' : ''}${nmOf(p.name)}${POS[p.kind] ? ' (' + POS[p.kind] + ')' : ''}${cnt(p, '93') ? ', голов ' + cnt(p, '93') : ''}${ss(p).eventCount ? `, в старте ${ss(p).eventStartedCount || 0} из ${ss(p).eventCount}` : ''}`;
+    const cur = String(P.lineupEventIid) === String(LU.eventIid);
+    const date = P.lineupEventStartTime ? new Date(Number(P.lineupEventStartTime) * 1000).toLocaleDateString('ru-RU') : '';
+    const top = pl.filter(p => cnt(p, '93') > 0).sort((a, b) => cnt(b, '93') - cnt(a, '93')).slice(0, 3).map(p => `${nmOf(p.name)} ${cnt(p, '93')}`).join(', ');
+    return `${nmOf(P.name)} — ${cur ? 'официальный состав на этот матч' : `состав прошлого матча (${date}), вероятная основа`}: ${start.map(fmt).join('; ')}. Запасные: ${bench.map(p => nmOf(p.name)).join(', ') || '—'}. Тренер: ${nmOf(P.manager && P.manager.name) || '—'}.${top ? ' Лучшие бомбардиры сезона: ' + top + '.' : ''}`;
+  }).join('\n');
+}
+async function ssisBundle(m){
+  const R = await ssisGet('eventReview', m.id);
+  const F = { R, LU: null, SI: null, errs: [] };
+  if (R.hasLineups){ try { F.LU = await ssisGet('eventLineups', m.id); } catch (e){ F.errs.push('составы: ' + e.message); } }
+  if (R.hasSeasonInfo){ try { F.SI = await ssisGet('seasonInfo', m.id); } catch (e){ F.errs.push('таблица: ' + e.message); } }
+  const before = m.start || Date.now() / 1000, ps = R.participants || [];
+  F.P1 = ps.find(p => p.order === 1) || ps[0]; F.P2 = ps.find(p => p.order === 2) || ps[1];
+  F.A = F.P1 ? ssisForm(F.P1, before) : null; F.B = F.P2 ? ssisForm(F.P2, before) : null;
+  F.avg = F.SI ? ssisLeagueAvg(F.SI) : null;
+  if (F.A && F.B && F.A.n >= 3 && F.B.n >= 3) extStats[m.id] = { A: F.A, B: F.B, avg: F.avg };
+  ssisState[m.id] = { state: 'done', at: Date.now(), F };
+  return F;
+}
+function ssisText(F, m){
+  if (!F) return '';
+  const L = [];
+  const st = F.SI ? standingsText(F.SI, [F.P1, F.P2].filter(Boolean).map(p => String(p.id))) : ''; if (st) L.push(st);
+  if (F.avg) L.push(`В этом турнире в среднем забивают хозяева ${r1(F.avg.h)}, гости ${r1(F.avg.a)} (${F.avg.n} матчей).`);
+  L.push(statsText(m.team1, F.A, m.sportKey)); L.push(statsText(m.team2, F.B, m.sportKey));
+  if (F.LU) L.push(lineupText(F.LU));
+  if (F.errs.length) L.push('Не загрузилось: ' + F.errs.join('; '));
+  return L.join('\n');
+}
+/* фоновая загрузка при открытии матча (без токенов) */
+function ensureSsis(m){
+  const s = ssisState[m.id];
+  if (s && (s.state === 'loading' || Date.now() - s.at < 30 * 60e3)) return s;
+  ssisState[m.id] = { state: 'loading', at: Date.now() };
+  ssisBundle(m).then(() => renderAll()).catch(e => { ssisState[m.id] = { state: 'error', at: Date.now(), err: e.message }; });
+  return ssisState[m.id];
+}
+
 function updAnHint(){
   if (!$('anMode')) return;
   const v = $('anMode').value, det = $('detailChk').checked, sp = searchProv();
@@ -2605,6 +2745,7 @@ function updAnHint(){
   $('anHint').textContent = t + (v !== 'math' ? (det ? ' С полным обоснованием (ответ длиннее).' : ' Короткий ответ.') : '') + (provHasKeys('apifb') ? ' API-Football подключён.' : '');
 }
 function modelBlockHtml(m){
+  const S0 = ensureSsis(m);
   const M = modelFor(m), before = m.start || Date.now() / 1000;
   const A = m.t1id ? teamStats(m.t1id, before, 10) : null, B = m.t2id ? teamStats(m.t2id, before, 10) : null;
   let h = '';
@@ -2613,7 +2754,12 @@ function modelBlockHtml(m){
     const rows = Object.entries(M.probs).map(([k, v]) => ({ k, v, odd: Number(m.odds[k]), ev: evOf(v.p, v.push, Number(m.odds[k])) })).sort((a, b) => b.ev - a.ev).slice(0, 10);
     h += `<div class="bd">` + rows.map(r => `<div class="bd-row"><span>${esc(r.k)} · кэф ${esc(r.odd)}</span><span>рынок ${pct(r.v.pm)} · модель ${pct(r.v.p)} · <b style="color:${r.ev >= 0.02 ? 'var(--accent)' : r.ev <= -0.05 ? 'var(--red)' : 'var(--muted)'}">${r.ev >= 0 ? '+' : ''}${Math.round(r.ev * 100)}%</b></span></div>`).join('') + `<div class="hint" style="text-align:left">Последний столбец — выгода ставки по модели (плюс = коэффициент выше справедливого).</div></div>`;
   }
-  [[m.team1, A], [m.team2, B]].forEach(([n, S]) => { h += `<div class="why">${esc(statsText(n, S, m.sportKey)).replace(/\n/g, '<br>')}</div>`; });
+  if (S0.state === 'done' && S0.F) h += `<div class="why"><b>📊 Матч-центр Фонбета</b><br>${esc(ssisText(S0.F, m)).replace(/\n/g, '<br>')}</div>`;
+  else {
+    if (S0.state === 'loading') h += `<div class="hint" style="text-align:left">⏳ Загружаю статистику матч-центра Фонбета…</div>`;
+    else if (S0.state === 'error') h += `<div class="hint" style="text-align:left">Статистика матч-центра Фонбета недоступна: ${esc(S0.err || '')}</div>`;
+    [[m.team1, A], [m.team2, B]].forEach(([n, S]) => { h += `<div class="why">${esc(statsText(n, S, m.sportKey)).replace(/\n/g, '<br>')}</div>`; });
+  }
   const hh = (m.t1id && m.t2id) ? h2hIds(m.t1id, m.t2id, before) : [];
   if (hh.length) h += `<div class="why">Очные: ${hh.map(r => `${esc(r.hn)} ${r.x}:${r.y} ${esc(r.an)}`).join('; ')}</div>`;
   const mv = movementText(m); if (mv) h += `<div class="why">${esc(mv)}</div>`;
@@ -3095,7 +3241,7 @@ function recordAnalysis(m){
   const A = { aid: uid('a'), mid: String(m.id), t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon, at: Date.now(), score: m.score, ms: m.start || 0,
     summary: (r && r.data && r.data.summary) || '', facts: (r && r.data && Array.isArray(r.data.facts)) ? r.data.facts.slice(0, 8).map(String) : [], lineups: (r && r.data && r.data.lineups) || null,
     players: (r && r.data && Array.isArray(r.data.key_players)) ? r.data.key_players.slice(0, 16) : [], quality: (r && r.data && r.data.data_quality) || '', mode: (r && r.mode) || '', sources: ((r && r.sources) || []).slice(0, 8),
-    prov: (r && r.prov) || '', model: (r && r.model) || '', notes: (r && r.notes) || [], ctx: (r && r.ctx) || null, criticNote: (r && r.critic && r.critic.notes) || '', bets: [], timeline: [{ t: Date.now(), min: m.status === 'live' ? fmtTimer(m, false) : '', score: m.score }], final: null, ended: null };
+    prov: (r && r.prov) || '', model: (r && r.model) || '', notes: (r && r.notes) || [], ctx: null, criticNote: (r && r.critic && r.critic.notes) || '', bets: [], timeline: [{ t: Date.now(), min: m.status === 'live' ? fmtTimer(m, false) : '', score: m.score }], final: null, ended: null };
   es.forEach(e => {
     const sb = e.sub >= 0 ? m.subs[e.sub] : null;
     const b = { market: e.key || String(e.b.market || ''), key: e.key, sub: sb ? sb.name : '', risk: e.risk,
