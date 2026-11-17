@@ -709,7 +709,7 @@ function processData(data){
   }
   fresh.forEach(m => finishedStore.delete(m.id));
   updateTracking(fresh, !prevReal.length || fresh.length >= prevReal.length * 0.5);
-  startupDone = true; syncResults(false).then(maybeResolve); syncTracker(false, fresh);
+  startupDone = true; syncResults(false).then(() => { if (!resOk) maybeResolve(); }); syncTracker(false, fresh);
   renderStats();
   while (finishedStore.size > 150) finishedStore.delete(finishedStore.keys().next().value);
 
@@ -2127,7 +2127,7 @@ async function syncTracker(force, fresh){
 
 /* ----- итоги прямо с Фонбета (раздел «Результаты»): работает без сервера, даже если приложение было закрыто ----- */
 const FB_RES_HOSTS = ['https://clientsapi-vk02-w.bk6bba-resources.ru', 'https://clientsapi-vk01-w.bk6bba-resources.ru', 'https://clientsapi-lb54-w.bk6bba-resources.com', 'https://clientsapi-lb61-w.bk6bba-resources.com'];
-let lastResHost = '', resBusy = false, resLastAt = 0, resInfo = '';
+let lastResHost = '', resBusy = false, resLastAt = 0, resInfo = '', resOk = false;
 const mskDate = ms => new Date(ms + 3 * 3600e3).toISOString().slice(0, 10);
 const SUB_TITLES = { 'тайм': i => `${i}-й тайм`, 'четверть': i => `${i}-я четверть`, 'период': i => `${i}-й период`, 'сет': i => `${i}-й сет`, 'карта': i => `${i}-я карта`, 'гейм': i => `${i}-й гейм` };
 /* ответ results/v2/getByDate → формат слежения {id:{finished,a,b,subs}} для нужных матчей */
@@ -2177,6 +2177,7 @@ async function syncResults(force){
     }
     Object.entries(found).forEach(([mid, r]) => { if (r.cancelled) open.filter(p => p.mid === mid).forEach(p => { p.note = 'Фонбет: матч отменён или не состоялся (ставка обычно возвращается). Если нужно, отметьте вручную.'; }); });
     applyServerResults(Object.fromEntries(Object.entries(found).filter(([, r]) => r.finished)));
+    resOk = ok > 0;
     resInfo = ok ? `итоги с Фонбета проверены ${clock()}: найдено ${Object.keys(found).length} из ${ids.length}` : `итоги с Фонбета недоступны: ${err}`;
   } catch (e){ resInfo = 'итоги с Фонбета: ' + e.message; }
   finally { resBusy = false; }
