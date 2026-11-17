@@ -22,6 +22,12 @@ body{background:var(--bg);color:var(--text);padding:12px;max-width:900px;margin:
 .btn-check{margin-top:6px;width:100%;background:transparent;color:var(--accent);border:1px solid var(--accent);padding:6px;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer}
 .key-status{font-size:11.5px;margin-top:5px;line-height:1.35;word-break:break-word}
 .ok{color:var(--accent)}.bad{color:var(--red)}.good{color:var(--accent)}.muted{color:var(--muted)}
+.mp{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:8px 0;background:rgba(255,255,255,.02)}
+.mp-h{font-weight:700;font-size:13px;margin-bottom:6px}.mp-g{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mp-c{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px}.mp-c small{display:block;color:var(--muted);font-size:10.5px}.mp-c b{font-size:14px}
+.mp-c.good b{color:var(--accent)}.mp-c.bad b{color:var(--red)}.mp-s{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.5}
+.my-chips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 2px}.my-chip{font-size:11px;border-radius:6px;padding:2px 6px;border:1px solid var(--border);background:var(--bg)}
+.my-chip.won{border-color:var(--accent);color:var(--accent)}.my-chip.lost{border-color:var(--red);color:var(--red)}
 .ai-tag{display:inline-block;font-size:11px;color:#d1b3ff;border:1px solid rgba(179,136,255,.45);background:rgba(179,136,255,.08);border-radius:6px;padding:2px 7px;margin:3px 0 5px;line-height:1.45}
 .stake-box{display:inline-flex;align-items:center;gap:4px;font-size:12px;flex-wrap:wrap}
 .stake-in{width:84px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 7px;border-radius:6px;font-size:13px}
@@ -867,7 +873,7 @@ function cardHtml(m, showLeague){
           <div class="teams-names"><div>${esc(m.team1)}</div><div>${esc(m.team2)}</div></div>
           <div class="score-box ${m.scoreChanged ? 'changed' : ''}"><div class="score-main sc-live" data-id="${esc(m.id)}">${esc(m.status === 'upcoming' ? '– : –' : m.score)}</div><div class="score-sub">${esc(m.comment)}</div></div>
         </div>
-        ${oddsHtml}${pickLine(m)}
+        ${oddsHtml}${pickLine(m)}${myChips(m)}
       </div>
       ${aiButton(m)}
       <div class="details ${open}" id="d${esc(m.id)}">${renderDetails(m)}</div>
@@ -2812,27 +2818,58 @@ function predMult(p){
 function predMoney(p){
   const s = Number(p.stake); if (!(s > 0)) return null;
   const k = predMult(p);
-  return k === null ? { stake: s, pending: true, potential: s * (Number(p.odd) || 1) } : { stake: s, ret: s * k, profit: s * k - s };
+  return k === null ? { stake: s, pending: true, potential: s * (Number(p.odd) || 1), odd: Number(p.odd) || 1 } : { stake: s, ret: s * k, profit: s * k - s, odd: Number(p.odd) || 1 };
 }
 function expMoney(ex, pm){
   const s = Number(ex.stake); if (!(s > 0)) return null;
   const legs = ex.legs.map(id => pm.get(id)).filter(Boolean);
   const ms = legs.map(predMult), odds = legs.reduce((a, l) => a * (Number(l.odd) || 1), 1);
-  if (ms.some(x => x === 0)) return { stake: s, ret: 0, profit: -s };
+  if (ms.some(x => x === 0)) return { stake: s, ret: 0, profit: -s, odds };
   if (ms.some(x => x === null)) return { stake: s, pending: true, potential: s * legs.reduce((a, l, i) => a * (ms[i] === null ? (Number(l.odd) || 1) : ms[i]), 1), odds };
   const k = ms.reduce((a, x) => a * x, 1);
-  return { stake: s, ret: s * k, profit: s * k - s };
+  return { stake: s, ret: s * k, profit: s * k - s, odds };
 }
 function moneySum(list){
-  const o = { staked: 0, ret: 0, inPlay: 0, potential: 0, n: 0, np: 0 };
-  list.filter(Boolean).forEach(x => { if (x.pending){ o.inPlay += x.stake; o.potential += x.potential; o.np++; } else { o.staked += x.stake; o.ret += x.ret; o.n++; } });
+  const o = { staked: 0, ret: 0, inPlay: 0, potential: 0, n: 0, np: 0, wonAmt: 0, lostAmt: 0, nWon: 0, nLost: 0, nVoid: 0, maxWin: 0, maxLoss: 0, oddSum: 0 };
+  list.filter(Boolean).forEach(x => {
+    if (x.pending){ o.inPlay += x.stake; o.potential += x.potential; o.np++; return; }
+    o.staked += x.stake; o.ret += x.ret; o.n++;
+    if (x.odd) o.oddSum += x.odd;
+    if (x.profit > 0.004){ o.wonAmt += x.profit; o.nWon++; o.maxWin = Math.max(o.maxWin, x.profit); }
+    else if (x.profit < -0.004){ o.lostAmt += -x.profit; o.nLost++; o.maxLoss = Math.max(o.maxLoss, -x.profit); }
+    else o.nVoid++;
+  });
   o.profit = o.ret - o.staked; o.roi = o.staked ? o.profit / o.staked : null;
+  o.retPct = o.staked ? o.ret / o.staked : null; o.hitPct = o.nWon + o.nLost ? o.nWon / (o.nWon + o.nLost) : null;
+  o.avgStake = o.n ? o.staked / o.n : 0;
   return o;
 }
+function mergeMoney(a, b){
+  const o = {}; ['staked', 'ret', 'inPlay', 'potential', 'n', 'np', 'wonAmt', 'lostAmt', 'nWon', 'nLost', 'nVoid', 'oddSum'].forEach(k => { o[k] = (a[k] || 0) + (b[k] || 0); });
+  o.maxWin = Math.max(a.maxWin || 0, b.maxWin || 0); o.maxLoss = Math.max(a.maxLoss || 0, b.maxLoss || 0);
+  o.profit = o.ret - o.staked; o.roi = o.staked ? o.profit / o.staked : null; o.retPct = o.staked ? o.ret / o.staked : null;
+  o.hitPct = o.nWon + o.nLost ? o.nWon / (o.nWon + o.nLost) : null; o.avgStake = o.n ? o.staked / o.n : 0;
+  return o;
+}
+const posR = x => x > 0.004 ? '+' + rub(x) : rub(0), negR = x => x > 0.004 ? '−' + rub(x) : rub(0);
+const pctS = x => x === null || x === undefined || isNaN(x) ? '—' : (x >= 0 ? '+' : '') + Math.round(x * 100) + '%';
 function moneyRow(label, o){
   if (!o.n && !o.np) return '';
   const col = o.profit > 0 ? 'var(--accent)' : o.profit < 0 ? 'var(--red)' : 'var(--muted)';
-  return `<div class="st-row"><b>${label}</b> ${o.n ? `поставлено ${rub(o.staked)} · вернулось ${rub(o.ret)} · <span style="color:${col}">${o.profit >= 0 ? 'прибыль' : 'убыток'} ${sgnRub(o.profit)}${o.roi !== null ? ` (${o.roi >= 0 ? '+' : ''}${Math.round(o.roi * 100)}%)` : ''}</span>` : ''}${o.np ? `${o.n ? ' · ' : ''}в игре ${rub(o.inPlay)} → возможно ${rub(o.potential)}` : ''}</div>`;
+  return `<div class="st-row"><b>${label}</b> ${o.n ? `поставлено ${rub(o.staked)} · заработано <span class="good">${posR(o.wonAmt)}</span> · проиграно <span class="bad">${negR(o.lostAmt)}</span> · <span style="color:${col}">итог ${sgnRub(o.profit)} (${pctS(o.roi)})</span>` : ''}${o.np ? `${o.n ? ' · ' : ''}в игре ${rub(o.inPlay)} → возможно ${rub(o.potential)}` : ''}</div>`;
+}
+/* понятная панель денег: поставлено, заработано, проиграно, итог, проценты */
+function moneyPanel(title, o){
+  if (!o.n && !o.np) return `<div class="mp"><div class="mp-h">${title}</div><div class="mp-s">Пока нет ставок с суммой за этот период. Укажите сумму и подтвердите ставку или экспресс — здесь появится учёт в рублях и процентах.</div></div>`;
+  const good = o.profit > 0.004, bad = o.profit < -0.004;
+  return `<div class="mp"><div class="mp-h">${title}</div><div class="mp-g">
+    <div class="mp-c"><small>Поставлено (сыгравшие ставки)</small><b>${rub(o.staked)}</b></div>
+    <div class="mp-c ${good ? 'good' : bad ? 'bad' : ''}"><small>Итог: чистая прибыль / убыток</small><b>${sgnRub(o.profit)}</b></div>
+    <div class="mp-c good"><small>Заработано на выигрышах</small><b>${posR(o.wonAmt)}</b></div>
+    <div class="mp-c bad"><small>Проиграно</small><b>${negR(o.lostAmt)}</b></div>
+    <div class="mp-c ${good ? 'good' : bad ? 'bad' : ''}"><small>Доходность (ROI)</small><b>${pctS(o.roi)}</b></div>
+    <div class="mp-c"><small>Вернулось от поставленного</small><b>${o.retPct === null ? '—' : Math.round(o.retPct * 100) + '%'}</b></div></div>
+    <div class="mp-s">Ставок с суммой: ${o.n} · зашло ${o.nWon}${o.hitPct !== null ? ` (${Math.round(o.hitPct * 100)}%)` : ''} · не зашло ${o.nLost}${o.nVoid ? ' · возвратов ' + o.nVoid : ''} · всего вернулось ${rub(o.ret)}${o.n ? ` · средняя ставка ${rub(o.avgStake)}` : ''}${o.maxWin ? ` · крупнейший выигрыш +${rub(o.maxWin)}` : ''}${o.maxLoss ? ` · крупнейший проигрыш −${rub(o.maxLoss)}` : ''}${o.np ? `<br>⏳ В игре: ${o.np} на ${rub(o.inPlay)} → возможный выигрыш ${rub(o.potential)}` : ''}</div></div>`;
 }
 function stakeCtl(key, odd, val){
   const v = stakeDraft[key] !== undefined ? stakeDraft[key] : (val || stakeDef());
@@ -2840,10 +2877,26 @@ function stakeCtl(key, odd, val){
   return `<span class="stake-box">💰 <input class="stake-in" type="number" inputmode="decimal" min="1" step="any" data-sk="${esc(key)}" data-odd="${esc(odd)}" value="${esc(v)}"> ₽ <span class="stake-win" data-sk="${esc(key)}">→ выигрыш ${w}</span></span>`;
 }
 function moneyLine(p){
-  const M = predMoney(p);
-  if (!M) return p.virtual ? '' : `<span class="hx-n">сумма не указана</span>`;
-  if (M.pending) return `<span class="money">💰 ${rub(M.stake)} → возможный выигрыш ${rub(M.potential)}</span>`;
-  return `<span class="money ${M.profit > 0 ? 'good' : M.profit < 0 ? 'bad' : ''}">💰 ${rub(M.stake)} · ${M.profit > 0.004 ? `выигрыш ${rub(M.ret)} (${sgnRub(M.profit)})` : M.profit < -0.004 ? `${M.ret > 0 ? 'вернулось ' + rub(M.ret) + ', ' : ''}${sgnRub(M.profit)}` : `возврат ${rub(M.ret)}`}</span>`;
+  const M = predMoney(p), odd = Number(p.odd) || 1;
+  if (!M){
+    if (!p.virtual) return `<span class="hx-n">сумма не указана</span>`;
+    if (['won', 'lost', 'void'].includes(p.state)){   // прогноз без ставки: показываем, что было бы при сумме по умолчанию
+      const s = stakeDef(), k = predMult(p), pr = s * k - s;
+      return `<span class="money muted">если бы поставили ${rub(s)} по кэф ${odd}: ${pr > 0.004 ? 'выигрыш ' + rub(s * k) + ' (' + sgnRub(pr) + ')' : pr < -0.004 ? 'проигрыш ' + sgnRub(pr) : 'возврат ' + rub(s)}</span>`;
+    }
+    return '';
+  }
+  if (M.pending) return `<span class="money">💰 Ставка ${rub(M.stake)} · кэф ${odd} → возможный выигрыш ${rub(M.potential)}</span>`;
+  return `<span class="money ${M.profit > 0 ? 'good' : M.profit < 0 ? 'bad' : ''}">💰 Ставка ${rub(M.stake)} · кэф ${odd} · выигрыш при победе ${rub(M.stake * odd)} → ${M.profit > 0.004 ? `✅ получено ${rub(M.ret)} (${sgnRub(M.profit)})` : M.profit < -0.004 ? `❌ ${M.ret > 0 ? 'вернулась половина ' + rub(M.ret) + ', ' : ''}потеря ${sgnRub(M.profit)}` : `↩️ возврат ${rub(M.ret)}`}</span>`;
+}
+/* мои ставки на матч — прямо на карточке (видно и в «Закрытые») */
+function myChips(m){
+  const mine = preds.filter(p => p.mid === String(m.id) && (p.src === 'express' || !p.virtual)); if (!mine.length) return '';
+  return `<div class="my-chips">` + mine.slice(0, 4).map(p => {
+    const M = predMoney(p), lbl = (p.src === 'express' ? '🎯 ' : '⭐ ') + (p.sub ? p.sub + ': ' : '') + p.market;
+    const tail = p.src === 'express' ? (p.state === 'pending' ? '' : ' ' + ({ won: '✅', lost: '❌', void: '↩️' }[p.state] || '')) : !M ? '' : M.pending ? ` · ${rub(M.stake)} → ${rub(M.potential)}` : ` · ${rub(M.stake)} → ${M.profit > 0.004 ? '✅ ' + sgnRub(M.profit) : M.profit < -0.004 ? '❌ ' + sgnRub(M.profit) : '↩️'}`;
+    return `<span class="my-chip ${p.state === 'won' ? 'won' : p.state === 'lost' ? 'lost' : ''}">${esc(lbl + tail)}</span>`;
+  }).join('') + `</div>`;
 }
 function initStakes(){
   const onInput = e => {
@@ -2937,7 +2990,7 @@ function accRow(name, S){
   const verdict = S.n < 5 ? '<span class="muted">мало данных</span>' : good ? '<span class="good">👍 в плюсе</span>' : bad ? '<span class="bad">⚠️ в минусе</span>' : '<span class="muted">≈ около нуля</span>';
   return `<div class="acc-row"><div class="acc-top"><b>${esc(name)}</b><span>${verdict}</span></div>
     <div class="acc-bar"><span class="${good ? 'g' : bad ? 'r' : 'y'}" style="width:${hitP || 0}%"></span>${needP ? `<i style="left:${needP}%" title="нужно для прибыли"></i>` : ''}</div>
-    <div class="acc-sub">Зашло <b>${hitP === null ? '—' : hitP + '%'}</b> (✅ ${S.won} · ❌ ${S.lost}${S.voids ? ' · ↩️ ' + S.voids : ''})${needP ? ` · для прибыли нужно от ${needP}% при среднем кэфе ${S.avgOdd.toFixed(2)}` : ''}${S.roi !== null ? ` · доходность <b class="${S.roi >= 0 ? 'good' : 'bad'}">${S.roi >= 0 ? '+' : ''}${Math.round(S.roi * 100)}%</b>` : ''}${S.money.n ? ` · деньги <b class="${S.money.profit >= 0 ? 'good' : 'bad'}">${sgnRub(S.money.profit)}</b>` : ''}${S.pending ? ` · ⏳ ${S.pending} в игре` : ''}</div></div>`;
+    <div class="acc-sub">Зашло <b>${hitP === null ? '—' : hitP + '%'}</b> (✅ ${S.won} · ❌ ${S.lost}${S.voids ? ' · ↩️ ' + S.voids : ''})${needP ? ` · для прибыли нужно от ${needP}% при среднем кэфе ${S.avgOdd.toFixed(2)}` : ''}${S.roi !== null ? ` · доходность <b class="${S.roi >= 0 ? 'good' : 'bad'}">${S.roi >= 0 ? '+' : ''}${Math.round(S.roi * 100)}%</b>` : ''}${S.money.n ? ` · деньги: поставлено ${rub(S.money.staked)}, заработано <span class="good">${posR(S.money.wonAmt)}</span>, проиграно <span class="bad">${negR(S.money.lostAmt)}</span>, итог <b class="${S.money.profit >= 0 ? 'good' : 'bad'}">${sgnRub(S.money.profit)} (${pctS(S.money.roi)})</b>` : ''}${S.pending ? ` · ⏳ ${S.pending} в игре` : ''}</div></div>`;
 }
 function accuracyHtml(ps, opts){
   opts = opts || {};
@@ -3567,7 +3620,7 @@ function betStateHtml(A, i, b){
   if (!p) return '';
   if (!p.virtual) return `<div class="cf-row"><span class="hx-st ${p.state}">⭐ ${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.state === 'pending' ? stakeCtl('p:' + p.pid, p.odd, p.stake) + (p.stake ? '' : ' <span class="hx-n">укажите сумму</span>') : moneyLine(p)}${p.state === 'pending' ? `<button class="cf-btn ghost" data-cact="cancel" data-aid="${esc(A.aid)}" data-i="${i}">Отменить</button>` : ''}</div>`;
   if (p.state === 'pending') return `<div class="cf-row">${stakeCtl('a:' + A.aid + '|' + i, b.odd)}<button class="cf-btn" data-cact="confirm" data-aid="${esc(A.aid)}" data-i="${i}">✅ Подтвердить ставку</button></div>`;
-  return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]} · без ставки</span></div>`;
+  return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]} · без ставки</span>${moneyLine(p)}</div>`;
 }
 function confirmCtl(m, i){
   const r = aiResults[m.id], A = r && r.aid ? analyses.find(a => a.aid === r.aid) : null;
@@ -3621,6 +3674,16 @@ function analysisCard(A){
   h += `<div class="cf-row">${unconf && A.bets.length > 1 ? `<button class="cf-btn" data-cact="all" data-aid="${esc(A.aid)}">✅ Подтвердить все</button>` : ''}<button class="cf-btn ghost" data-cact="open" data-mid="${esc(A.mid)}">📂 Открыть матч</button><button class="cf-btn ghost" data-cact="del" data-aid="${esc(A.aid)}">🗑 Удалить</button></div></div>`;
   return h;
 }
+/* как «по числу событий» у экспрессов: короткая таблица по уровню риска с деньгами */
+function riskTable(ps, who){
+  const R = [['low', '🟢 Надёжные'], ['medium', '🟡 Средний риск'], ['high', '🔴 Рискованные']];
+  const rows = R.map(([k, l]) => {
+    const xs = ps.filter(p => p.risk === k); if (!xs.length) return '';
+    const c = tally(xs.map(p => p.state)), M = moneySum(xs.map(predMoney));
+    return `<div class="bd-row"><span>${l}</span><span>✅ ${c.won} · ❌ ${c.lost}${c.pct !== null ? ' · ' + c.pct + '%' : ''}${M.n ? ` · <b class="${M.profit >= 0 ? 'good' : 'bad'}">${sgnRub(M.profit)}</b> (${pctS(M.roi)})` : ''}${c.pending ? ' · ⏳ ' + c.pending : ''}</span></div>`;
+  }).join('');
+  return rows ? `<div class="bd"><b>Ставки по риску (${who})</b>${rows}</div>` : '';
+}
 function anBody(){
   const rg = hfRange();
   const L = analyses.filter(a => {
@@ -3632,7 +3695,11 @@ function anBody(){
   const aids = new Set(L.map(a => a.aid));
   const singles = preds.filter(p => p.src === 'single' && p.aid && aids.has(p.aid)), mine = singles.filter(p => !p.virtual);
   const conf = L.filter(a => a.bets.some(isMine)).reverse(), fresh = L.filter(a => !a.bets.some(isMine)).reverse();
-  let h = tallyHtml('Мои ставки (подтверждённые):', tally(mine.map(p => p.state))) + moneyRow('💰 Мои ставки:', moneySum(mine.map(predMoney))) + tallyHtml('Все прогнозы ИИ (включая неподтверждённые):', tally(singles.map(p => p.state)));
+  let h = `<div class="top-sec">📈 Аналитика ставок</div>` + tallyHtml('Мои ставки (подтверждённые):', tally(mine.map(p => p.state))) + tallyHtml('Все прогнозы ИИ (включая неподтверждённые):', tally(singles.map(p => p.state)));
+  h += moneyPanel('💰 Деньги по моим ставкам', moneySum(mine.map(predMoney)));
+  const virt = singles.filter(p => p.virtual && ['won', 'lost', 'void'].includes(p.state));
+  if (virt.length){ const sd = stakeDef(), V = moneySum(virt.map(p => { const k = predMult(p); return { stake: sd, ret: sd * k, profit: sd * k - sd, odd: Number(p.odd) || 1 }; })); h += `<div class="mp-s" style="margin:-2px 0 8px">🤖 Если бы ставили по ${rub(sd)} на все неподтверждённые прогнозы ИИ (${V.n}): поставлено ${rub(V.staked)}, заработано ${posR(V.wonAmt)}, проиграно ${negR(V.lostAmt)}, итог <b class="${V.profit >= 0 ? 'good' : 'bad'}">${sgnRub(V.profit)} (${pctS(V.roi)})</b>.</div>`; }
+  h += riskTable(mine.length ? mine : singles, mine.length ? 'моих ставок' : 'всех прогнозов ИИ');
   const sets = [['mine', '⭐ Мои ставки'], ['all', '🤖 Все прогнозы ИИ']].map(([k, l]) => `<button data-accs="${k}" class="${accSet === k ? 'active' : ''}">${l}</button>`).join('');
   h += accuracyHtml(accSet === 'mine' ? mine : singles, { sets });
   h += `<details class="man"><summary>🔬 Для продвинутых: честность вероятностей и качество модели</summary>${calibrationHtml(singles)}${qualityHtml()}</details>`;
@@ -3894,8 +3961,8 @@ function renderStats(){
   const ce = tally(exps.filter(e => inPer(e.at, pr)).map(e => expStatus(e, pm)));
   const ms = moneySum(preds.filter(p => p.src === 'single' && !p.virtual && inPer(p.at, pr)).map(predMoney));
   const me = moneySum(exps.filter(e => inPer(e.at, pr)).map(e => expMoney(e, pm)));
-  const mt = { staked: ms.staked + me.staked, ret: ms.ret + me.ret, inPlay: ms.inPlay + me.inPlay, potential: ms.potential + me.potential, n: ms.n + me.n, np: ms.np + me.np }; mt.profit = mt.ret - mt.staked; mt.roi = mt.staked ? mt.profit / mt.staked : null;
-  $('stBody').innerHTML = tallyHtml('Анализы матчей (подтверждённые):', cp) + tallyHtml('Экспрессы:', ce) + moneyRow('💰 Одиночные:', ms) + moneyRow('💰 Экспрессы:', me) + ((ms.n || ms.np) && (me.n || me.np) ? moneyRow('💰 Итого:', mt) : '');
+  const mt = mergeMoney(ms, me);
+  $('stBody').innerHTML = tallyHtml('Анализы матчей (подтверждённые):', cp) + tallyHtml('Экспрессы:', ce) + moneyPanel('💰 Деньги за период: одиночные + экспрессы', mt) + moneyRow('Одиночные:', ms) + moneyRow('Экспрессы:', me);
 }
 function initStats(){
   loadStore();
@@ -3983,7 +4050,7 @@ function expCard(ex, pm, no){
   return `<div class="hx ${st}"><div class="hx-head"><b>Экспресс #${no} · ${legs.length} ${plural(legs.length, 'событие', 'события', 'событий')} · ${fmtDT(ex.at)}</b><span class="hx-badge">${BADGE[st]}</span></div>
     ${aiTagHtml(ex)}
     <div class="hx-sub">Общий кэф ≈ ${odds.toFixed(2)}${ex.prob ? ` · шанс по модели ≈ ${(ex.prob * 100).toFixed(1)}%` : ''}${legs.filter(l => l.state === 'won').length ? ` · зашло ${legs.filter(l => l.state === 'won').length} из ${legs.length}` : ''}</div>
-    <div class="cf-row">${(() => { const M = expMoney(ex, pm); if (!M) return st === 'pending' ? stakeCtl('ex:' + ex.eid, odds.toFixed(2), '') + ' <span class="hx-n">укажите сумму</span>' : '<span class="hx-n">сумма не указана</span>'; if (M.pending) return stakeCtl('ex:' + ex.eid, odds.toFixed(2), ex.stake); return `<span class="money ${M.profit > 0 ? 'good' : M.profit < 0 ? 'bad' : ''}">💰 ${rub(M.stake)} · ${M.profit > 0.004 ? 'выигрыш ' + rub(M.ret) + ' (' + sgnRub(M.profit) + ')' : M.profit < -0.004 ? sgnRub(M.profit) : 'возврат ' + rub(M.ret)}</span>`; })()}</div>
+    <div class="cf-row">${(() => { const M = expMoney(ex, pm); if (!M) return st === 'pending' ? stakeCtl('ex:' + ex.eid, odds.toFixed(2), '') + ' <span class="hx-n">укажите сумму</span>' : '<span class="hx-n">сумма не указана</span>'; if (M.pending) return stakeCtl('ex:' + ex.eid, odds.toFixed(2), ex.stake); return `<span class="money ${M.profit > 0 ? 'good' : M.profit < 0 ? 'bad' : ''}">💰 Ставка ${rub(M.stake)} · кэф ${(M.odds || odds).toFixed(2)} · выигрыш при победе ${rub(M.stake * (M.odds || odds))} → ${M.profit > 0.004 ? '✅ получено ' + rub(M.ret) + ' (' + sgnRub(M.profit) + ')' : M.profit < -0.004 ? '❌ потеря ' + sgnRub(M.profit) : '↩️ возврат ' + rub(M.ret)}</span>`; })()}</div>
     ${lost.length ? `<div class="hx-lost">❌ Не зашло (${lost.length}):<br>${lost.map(l => '• ' + esc(l.t1 + ' — ' + l.t2 + ': ставка ' + l.market + ' (' + (l.desc || '') + '). ' + (explainPred(l) || ''))).join('<br>')}</div>` : ''}
     ${legs.map(legHtml).join('')}<button class="hx-del" data-hact="delex" data-eid="${esc(ex.eid)}">🗑 Удалить</button></div>`;
 }
@@ -3999,7 +4066,7 @@ function sizeHtml(exL, pm){
   const rows = B.map(([a, b, l]) => {
     const xs = exL.filter(e => e.legs.length >= a && e.legs.length <= b); if (!xs.length) return '';
     const c = tally(xs.map(e => expStatus(e, pm))), M = moneySum(xs.map(e => expMoney(e, pm)));
-    return `<div class="bd-row"><span>${l}</span><span>✅ ${c.won} · ❌ ${c.lost}${c.pct !== null ? ' · ' + c.pct + '%' : ''}${M.n ? ` · <b class="${M.profit >= 0 ? 'good' : 'bad'}">${sgnRub(M.profit)}</b>` : ''}${c.pending ? ' · ⏳ ' + c.pending : ''}</span></div>`;
+    return `<div class="bd-row"><span>${l}</span><span>✅ ${c.won} · ❌ ${c.lost}${c.pct !== null ? ' · ' + c.pct + '%' : ''}${M.n ? ` · <b class="${M.profit >= 0 ? 'good' : 'bad'}">${sgnRub(M.profit)}</b> (${pctS(M.roi)})` : ''}${c.pending ? ' · ⏳ ' + c.pending : ''}</span></div>`;
   }).join('');
   return rows ? `<div class="bd"><b>Экспрессы по числу событий</b>${rows}</div>` : '';
 }
@@ -4011,7 +4078,8 @@ function histBody(){
     return t >= rg.from && t <= rg.to && hfMatchQ(legs.map(hfText).join(' ')) && hfResOk(expStatus(e, pm));
   });
   const legsAll = []; exL.forEach(e => e.legs.forEach(id => { const p = pm.get(id); if (p) legsAll.push(p); }));
-  let h = tallyHtml('Экспрессы:', tally(exL.map(e => expStatus(e, pm)))) + moneyRow('💰 Экспрессы:', moneySum(exL.map(e => expMoney(e, pm))));
+  let h = `<div class="top-sec">📈 Аналитика экспрессов</div>` + tallyHtml('Экспрессы:', tally(exL.map(e => expStatus(e, pm)))) + tallyHtml('События в них:', tally(legsAll.map(p => p.state)));
+  h += moneyPanel('💰 Деньги по экспрессам', moneySum(exL.map(e => expMoney(e, pm))));
   h += sizeHtml(exL, pm) + accuracyHtml(legsAll, { title: 'событий в экспрессах' });
   h += searchBar();
   h += `<div class="hint">Здесь подтверждённые экспрессы. Разборы отдельных матчей — во вкладке «🔍 Анализ матча». Результаты и выигрыш проставляются автоматически.</div>`;
