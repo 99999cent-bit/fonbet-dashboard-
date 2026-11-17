@@ -271,6 +271,26 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
 <div class="modal" id="settingsModal" style="display:none">
   <div class="modal-box">
     <div class="modal-head"><b>⚙️ Настройки</b><button id="btnCloseSettings">✕</button></div>
+    <div class="d-title" style="margin-top:4px">🤖 Искусственный интеллект и ключи</div>
+    <div class="input-group"><label>Какой ИИ анализирует:</label><select id="aiProv"></select></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin:6px 0"><input type="checkbox" id="aiFallback" style="margin-top:3px"><span>Если у выбранного ИИ закончились ключи или лимит, пробовать другие ИИ, у которых есть ключи</span></label>
+    <div class="hint" style="text-align:left">Нажмите на название ИИ, чтобы развернуть или свернуть его ключи. «➕ Добавить ключ» добавляет новое поле. Если на ключе закончился лимит или он не работает, программа сама переходит к следующему ключу этого ИИ и запоминает рабочий. Ключи хранятся только в этом браузере.</div>
+    <div id="aiBlocks"></div>
+    <div class="d-title" style="margin-top:14px">Анализ матча и расход токенов</div>
+    <select id="anMode" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
+      <option value="math">📐 Только математика: модель по коэффициентам и архиву Фонбета, без ИИ (0 токенов)</option>
+      <option value="quick">⚡ Быстрый: аналитик ИИ без поиска в интернете (1 запрос)</option>
+      <option value="deep">🧠 Глубокий: разведчик ищет составы, травмы, новости + аналитик (2 запроса)</option>
+      <option value="max">🏆 Максимум: разведчик + аналитик дважды + критик (4–5 запросов)</option>
+    </select>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-top:8px"><input type="checkbox" id="detailChk" checked style="margin-top:3px"><span>📖 Полное обоснование по нажатию на ставку (ИИ пишет больше текста; выключите, чтобы тратить меньше токенов)</span></label>
+    <div class="hint" id="anHint" style="text-align:left"></div>
+    <div class="d-title" style="margin-top:14px">📚 Архив итогов Фонбета (статистика команд)</div>
+    <select id="arcDays" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
+      <option value="0">Выключен</option><option value="14">14 дней</option><option value="30">30 дней</option><option value="60">60 дней</option><option value="90">90 дней</option>
+    </select>
+    <div class="hint" id="arcInfo" style="text-align:left"></div>
+    <div class="hint" style="text-align:left">Приложение само скачивает итоги всех матчей Фонбета за выбранный срок и считает по ним форму, голы, таймы, отдых и рейтинг команд. Первая загрузка — около 1–2 МБ на день, дальше докачиваются только новые дни. Хранится в этом браузере.</div>
     <div class="input-group">
       <label>Ссылка на бэкенд Railway:</label>
       <input type="text" id="backendUrl" value="https://fonbet-dashboard-production.up.railway.app">
@@ -290,26 +310,6 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
     <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin:6px 0"><input type="checkbox" id="wakeChk"> 📱 Не выключать экран, пока открыта страница</label>
     <div class="hint" id="wakeNote" style="text-align:left">Результаты ставок проставляются, пока страница открыта и активна. Если экран гаснет или страница уходит в фон, браузер приостанавливает слежение.</div>
     <div class="hint" id="histInfo" style="text-align:left"></div>
-    <div class="d-title" style="margin-top:14px">Анализ матча и расход токенов</div>
-    <select id="anMode" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
-      <option value="math">📐 Только математика: модель по коэффициентам и архиву Фонбета, без ИИ (0 токенов)</option>
-      <option value="quick">⚡ Быстрый: аналитик ИИ без поиска в интернете (1 запрос)</option>
-      <option value="deep">🧠 Глубокий: разведчик ищет составы, травмы, новости + аналитик (2 запроса)</option>
-      <option value="max">🏆 Максимум: разведчик + аналитик дважды + критик (4–5 запросов)</option>
-    </select>
-    <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-top:8px"><input type="checkbox" id="detailChk" checked style="margin-top:3px"><span>📖 Полное обоснование по нажатию на ставку (ИИ пишет больше текста; выключите, чтобы тратить меньше токенов)</span></label>
-    <div class="hint" id="anHint" style="text-align:left"></div>
-    <div class="d-title" style="margin-top:14px">📚 Архив итогов Фонбета (статистика команд)</div>
-    <select id="arcDays" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
-      <option value="0">Выключен</option><option value="14">14 дней</option><option value="30">30 дней</option><option value="60">60 дней</option><option value="90">90 дней</option>
-    </select>
-    <div class="hint" id="arcInfo" style="text-align:left"></div>
-    <div class="hint" style="text-align:left">Приложение само скачивает итоги всех матчей Фонбета за выбранный срок и считает по ним форму, голы, таймы, отдых и рейтинг команд. Первая загрузка — около 1–2 МБ на день, дальше докачиваются только новые дни. Хранится в этом браузере.</div>
-    <div class="d-title" style="margin-top:14px">🤖 Искусственный интеллект и ключи</div>
-    <div class="input-group"><label>Какой ИИ анализирует:</label><select id="aiProv"></select></div>
-    <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin:6px 0"><input type="checkbox" id="aiFallback" style="margin-top:3px"><span>Если у выбранного ИИ закончились ключи или лимит, пробовать другие ИИ, у которых есть ключи</span></label>
-    <div class="hint" style="text-align:left">Нажмите на название ИИ, чтобы развернуть или свернуть его ключи. «➕ Добавить ключ» добавляет новое поле. Если на ключе закончился лимит или он не работает, программа сама переходит к следующему ключу этого ИИ и запоминает рабочий. Ключи хранятся только в этом браузере.</div>
-    <div id="aiBlocks"></div>
   </div>
 </div>
 <div class="modal" id="matchModal" style="display:none">
@@ -2349,7 +2349,7 @@ function buildAnalystPrompt(m, ctx, withDetail){
   return `ЗАДАЧА: дать честные вероятности и найти ставки, где у нас есть перевес над букмекером.
 МАТЧ: ${m.team1} — ${m.team2}. Турнир: ${m.league}. Спорт: ${m.sport}. Начало: ${whenText(m)}.
 СТАТУС: ${m.status === 'live' ? `идёт, счёт ${m.score}, ${fmtTimer(m, true)}` : m.status === 'upcoming' ? 'ещё не начался' : 'завершён'}${m.comment ? ' (' + m.comment + ')' : ''}.
-КОЭФФИЦИЕНТЫ (основные): ${JSON.stringify(m.odds)}
+${m.info ? 'ЛАЙВ-ДАННЫЕ ФОНБЕТА (статистика матча): ' + JSON.stringify(m.info).slice(0, 900) + '\n' : ''}КОЭФФИЦИЕНТЫ (основные): ${JSON.stringify(m.odds)}
 ${subs ? 'ДОП. РЫНКИ:\n' + subs + '\n' : ''}
 ВЕРОЯТНОСТИ, ПОСЧИТАННЫЕ ПРОГРАММОЙ (рынок без маржи | по статистике | итог модели | выгода при этом кэфе):
 ${M ? modelTable(m, 30) : 'модель для этого матча не построена'}
@@ -2599,6 +2599,17 @@ function modelBlockHtml(m){
   if (!ARC.count) h += `<div class="hint" style="text-align:left">${esc(ARC.info || 'Архив Фонбета ещё загружается…')}</div>`;
   return h;
 }
+function legProb(m, key){
+  if (!key || m.odds[key] === undefined) return null;
+  const M = modelFor(m), v = M && M.probs[key];
+  if (v) return { p: v.p, push: v.push || 0, pm: v.pm };
+  const pm = marketProb(m, key); return pm ? { p: pm, push: 0, pm } : null;
+}
+function expressMath(legs){
+  let pAll = 1, ret = 1, full = true;
+  legs.forEach(l => { if (l.p === null || l.p === undefined){ full = false; return; } pAll *= l.p; ret *= l.p * l.odd + (l.push || 0); });
+  return full && legs.length ? { prob: pAll, fair: 1 / pAll, ev: ret - 1 } : null;
+}
 function expHint(m){
   const M = modelFor(m); if (!M) return '';
   return Object.entries(M.probs).map(([k, v]) => ({ k, p: v.p, ev: evOf(v.p, v.push, Number(m.odds[k])) })).filter(x => x.p >= 0.45)
@@ -2647,9 +2658,10 @@ function renderExpressResult(){
   let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная</div>`;
   if (r.summary) h += `<div class="ai-sum">${esc(r.summary)}</div>`;
   h += `<div class="ex-total">Экспресс из ${r.legs.length} событий · общий кэф ≈ <b>${r.total.toFixed(2)}</b></div>`;
+  if (r.X) h += `<div class="why">По модели (рынок + статистика): шанс пройти целиком ≈ <b>${(r.X.prob * 100).toFixed(1)}%</b> · честный кэф ≈ ${r.X.fair.toFixed(2)} против ${r.total.toFixed(2)} у Фонбета · <span style="color:${r.X.ev >= 0 ? 'var(--accent)' : 'var(--red)'}">выгода ${r.X.ev >= 0 ? '+' : ''}${Math.round(r.X.ev * 100)}%</span>${r.X.ev < 0 ? '. Минус — это маржа букмекера, умноженная на число событий: чем длиннее экспресс, тем она больше.' : ''}</div>`;
   if (r.legs.length) h += `<div class="ai-foot">Нажмите на ставку, чтобы открыть матч и прогноз.</div>`;
   r.legs.forEach((l, i) => {
-    h += `<div class="bet ${l.risk}" data-mid="${esc(l.id)}"><div class="bet-top"><b>${i + 1}. ${esc(l.market)}</b><span class="bet-who">→ ${esc(l.desc)}</span><span class="bet-odd">кэф ${esc(l.odd)}</span><span class="bet-risk">${RISK[l.risk]}</span></div><div class="ex-leg-match">${esc(l.title)}</div><div class="bet-why">${esc(l.reason)}</div></div>`;
+    h += `<div class="bet ${l.risk}" data-mid="${esc(l.id)}"><div class="bet-top"><b>${i + 1}. ${esc(l.market)}</b><span class="bet-who">→ ${esc(l.desc)}</span><span class="bet-odd">кэф ${esc(l.odd)}</span><span class="bet-risk">${RISK[l.risk]}</span></div><div class="ex-leg-match">${esc(l.title)}</div><div class="bet-why">${esc(l.reason)}</div>${l.p ? `<div class="why">модель ${pct(l.p)}${l.pm ? ' · рынок ' + pct(l.pm) : ''} · выгода ${(() => { const e = evOf(l.p, l.push, l.odd); return (e >= 0 ? '+' : '') + Math.round(e * 100) + '%'; })()}</div>` : ''}</div>`;
   });
   h += `<div class="ai-foot">💾 Сохранён во вкладке «Мои экспрессы». Собрано в ${clock(r.at)} по коэффициентам на этот момент. Чем больше событий, тем ниже шанс, что экспресс пройдёт целиком. ИИ не знает исходов, это не гарантия.</div><button class="btn-more" id="exCopy">📋 Копировать экспресс</button></div>`;
   el.innerHTML = h;
@@ -2683,11 +2695,14 @@ async function buildExpress(){
       legs.push({ id: m.id, market: key || String(l.market || ''), desc: describeBet(m, key || l.market), odd, risk: ['low', 'medium', 'high'].includes(l.risk) ? l.risk : 'medium', reason: l.reason || '',
         title: `${m.sportIcon} ${m.league} · ${m.team1} — ${m.team2} (${m.status === 'live' ? '🔴 ' + m.score : fmtStart(m)})` });
     });
+    legs.forEach(l => { const m = matchById[String(l.id)], q = m ? legProb(m, l.market) : null; l.p = q ? q.p : null; l.pm = q ? q.pm : null; l.push = q ? q.push : 0; if (q) l.risk = riskFrom(q.p); });
     const used = (auto ? legs.filter(l => allowedRisk.includes(l.risk)) : legs).slice(0, n);
     if (!used.length) throw new Error(legs.length ? '⚠️ ИИ предложил ставки только другого уровня риска. Разрешите больше уровней риска или повторите.' : '⚠️ ИИ не вернул распознаваемых ставок. Попробуйте ещё раз.');
     const total = used.reduce((p, l) => p * l.odd, 1);
-    saveExpress(used, (d && d.summary) || '', total);
-    expResult = { state:'done', legs: used, total, summary: (d && d.summary) || '', at: Date.now() };
+    const X = expressMath(used);
+    const ex = saveExpress(used, (d && d.summary) || '', total);
+    if (X){ ex.prob = X.prob; ex.ev = X.ev; saveStore(); }
+    expResult = { state:'done', legs: used, total, summary: (d && d.summary) || '', at: Date.now(), X };
   } catch (err){ expResult = { state:'error', text: err.message }; }
   renderExpressResult();
 }
@@ -2839,7 +2854,7 @@ function saveExpress(legs, summary, total){
   const ex = { eid: uid('e'), at: Date.now(), summary, total, legs: [] };
   legs.forEach(l => {
     const m = matchById[String(l.id)]; if (!m) return;
-    const p = makePred(m, { src:'express', market: l.market, key: resolveKey(m, l.market), odd: l.odd, risk: l.risk, desc: l.desc, reason: l.reason });
+    const p = makePred(m, { src:'express', market: l.market, key: resolveKey(m, l.market), odd: l.odd, risk: l.risk, desc: l.desc, reason: l.reason, pf: l.p ?? null, pbase: l.p ?? null, pm: l.pm ?? null, prob: l.p ? Math.round(l.p * 1000) / 10 : null });
     p.eid = ex.eid; preds.push(p); ex.legs.push(p.pid);
   });
   exps.push(ex); saveStore(); renderStats();
@@ -3412,7 +3427,7 @@ function expCard(ex, pm, no){
   const odds = legs.filter(l => l.state !== 'void').reduce((a, l) => a * (Number(l.odd) || 1), 1);
   const BADGE = { won:'✅ ЗАШЁЛ', lost:'❌ НЕ ЗАШЁЛ', pending:'⏳ В игре', unknown:'⚠️ Итог не получен', void:'↩️ Возврат' };
   return `<div class="hx ${st}"><div class="hx-head"><b>Экспресс #${no} · ${legs.length} событий · ${fmtDT(ex.at)}</b><span class="hx-badge">${BADGE[st]}</span></div>
-    <div class="hx-sub">Общий кэф ≈ ${odds.toFixed(2)}${legs.filter(l => l.state === 'won').length ? ` · зашло ${legs.filter(l => l.state === 'won').length} из ${legs.length}` : ''}</div>
+    <div class="hx-sub">Общий кэф ≈ ${odds.toFixed(2)}${ex.prob ? ` · шанс по модели ≈ ${(ex.prob * 100).toFixed(1)}%` : ''}${legs.filter(l => l.state === 'won').length ? ` · зашло ${legs.filter(l => l.state === 'won').length} из ${legs.length}` : ''}</div>
     ${lost.length ? `<div class="hx-lost">❌ Не зашло (${lost.length}):<br>${lost.map(l => '• ' + esc(l.t1 + ' — ' + l.t2 + ': ставка ' + l.market + ' (' + (l.desc || '') + '). ' + (explainPred(l) || ''))).join('<br>')}</div>` : ''}
     ${legs.map(legHtml).join('')}<button class="hx-del" data-hact="delex" data-eid="${esc(ex.eid)}">🗑 Удалить</button></div>`;
 }
@@ -3457,12 +3472,30 @@ function handleHistAct(b){
   saveStore(); renderStats(); renderAll();
 }
 
-function analyzeTopLine(){
-  const live = parsedMatches.filter(m => m.status === 'live' && Object.keys(m.odds).length > 0).slice(0, 15);
-  if (!live.length){ alert('Нет матчей в лайве.'); return; }
-  const summary = live.map(m => `- [${m.league}] ${m.team1} vs ${m.team2} (${m.score}, ${fmtTimer(m, false)}) кэфы: ${JSON.stringify(m.odds)}`).join('\n');
-  callGemini(`Выбери топ-3 ставки из лайвов:\n${summary}`);
+async function analyzeTopLine(){
+  const out = $('aiOutput');
+  const live = parsedMatches.filter(m => m.status === 'live' && Object.keys(m.odds).length > 0 && m.tier >= 0);
+  if (!live.length){ out.textContent = 'Сейчас нет матчей в лайве.'; return; }
+  out.textContent = `⏳ Считаю модель по ${live.length} лайв-матчам...`;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  await new Promise(r => setTimeout(r, 30));
+  const cands = [];
+  live.slice(0, 150).forEach(m => {
+    const M = modelFor(m); if (!M) return;
+    Object.entries(M.probs).forEach(([k, v]) => { const odd = Number(m.odds[k]); if (odd >= 1.3 && odd <= 5 && v.p >= 0.3) cands.push({ m, k, p: v.p, pm: v.pm, odd, ev: evOf(v.p, v.push, odd), w: M.w }); });
+  });
+  cands.sort((a, b) => b.ev - a.ev);
+  const seen = new Set(), top = [];
+  for (const c of cands){ if (seen.has(c.m.id)) continue; seen.add(c.m.id); top.push(c); if (top.length >= 10) break; }
+  const line = c => `${c.m.sportIcon} ${c.m.league} · ${c.m.team1} — ${c.m.team2} (${c.m.score}, ${fmtTimer(c.m, false)}): ${c.k} кэф ${c.odd} · модель ${pct(c.p)}, рынок ${pct(c.pm)} · выгода ${c.ev >= 0 ? '+' : ''}${Math.round(c.ev * 100)}%${c.w ? '' : ' (без статистики архива)'}`;
+  if (!top.length){ out.textContent = 'Модель не построилась ни для одного лайв-матча (нет основных коэффициентов).'; return; }
+  if ($('anMode').value === 'math' || !keyOrder().length || !modelOf(aiCfg.prov)){
+    out.textContent = '📐 Лучшие лайв-ставки по модели (без ИИ):\n' + top.slice(0, 3).map((c, i) => (i + 1) + '. ' + line(c)).join('\n') + '\n\nВыгода по модели — это не гарантия: модель знает только коэффициенты и статистику архива.';
+    return;
+  }
+  callGemini(`Ты аналитик лайв-ставок. Программа посчитала модель (рынок без маржи + статистика архива Фонбета) по всем лайв-матчам и отобрала кандидатов с наибольшей выгодой. Выбери 3 лучшие ставки: можно эти или другие рынки этих же матчей. Учитывай счёт, время и надёжность, не бери ставки с отрицательной выгодой без веской причины. Для каждой напиши: матч, ставка, кэф, вероятность и почему. Кратко, по-русски.\nКандидаты:\n${top.map(c => '- ' + line(c) + ' | все кэфы: ' + JSON.stringify(c.m.odds).slice(0, 300)).join('\n')}`);
 }
+
 </script>
 </body>
 </html>
