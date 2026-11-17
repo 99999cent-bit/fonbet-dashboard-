@@ -135,6 +135,12 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
 .key-n{width:20px;color:var(--muted);font-size:12px;text-align:right;flex:none}
 .key-row input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px}
 .key-badge{font-size:11px;min-width:84px;text-align:right}
+.key-del{background:none;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:4px 8px;cursor:pointer;flex:none}
+details.kblock{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:8px 0;background:rgba(255,255,255,.02)}
+details.kblock>summary{cursor:pointer;font-size:13px;list-style:none}details.kblock>summary::-webkit-details-marker{display:none}
+details.kblock>summary::before{content:"▸ ";color:var(--muted)}details.kblock[open]>summary::before{content:"▾ "}
+.ksum{font-size:11px;color:var(--muted);margin-left:6px}.kcur{font-size:10px;background:var(--accent);color:#000;border-radius:4px;padding:1px 5px;margin-left:4px}
+.kbase{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 8px;border-radius:6px;font-size:12px;margin-bottom:6px}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#252b34;border:1px solid var(--accent);color:var(--text);padding:10px 14px;border-radius:8px;font-size:13px;z-index:60;display:none;max-width:90%}
 .bet[data-mid]{cursor:pointer}
 .bet[data-mid]:active{filter:brightness(1.2)}
@@ -210,15 +216,15 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
 
 <div class="config-panel" style="grid-template-columns:1fr">
   <div class="input-group">
-    <label>Модель ИИ:</label>
-    <select id="modelSelect"><option value="">— сначала добавьте ключ в ⚙️ —</option></select>
+    <label>ИИ и модель:</label>
+    <div style="display:flex;gap:6px"><select id="aiProvMain" style="width:auto;flex:0 0 112px"></select><select id="modelSelect" style="flex:1;min-width:0"><option value="">— сначала добавьте ключ в ⚙️ —</option></select></div>
     <div class="key-status" id="keyStatus"></div>
     <div class="hint" style="text-align:left;margin-top:6px">Режим анализа: <b id="anModeTxt"></b> (меняется в ⚙️, там же экономия токенов)</div>
   </div>
 </div>
 
 <div class="ai-panel">
-  <div class="ai-title">🤖 Анализ Gemini AI</div>
+  <div class="ai-title">🤖 Анализ: <span class="ai-nm">Gemini</span></div>
   <div class="ai-content" id="aiOutput">Вставьте ключ, нажмите «Проверить ключ», выберите модель. Нажмите на матч, чтобы увидеть подробности.</div>
   <button class="btn-ai-all" id="btnTop">🔥 Найти 3 лучшие ставки из Лайва</button>
 </div>
@@ -286,16 +292,24 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
     <div class="hint" id="histInfo" style="text-align:left"></div>
     <div class="d-title" style="margin-top:14px">Анализ матча и расход токенов</div>
     <select id="anMode" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
-      <option value="deep">🧠 Глубокий: ИИ ищет в интернете составы, игроков, форму, травмы (больше токенов и запросов)</option>
-      <option value="quick">⚡ Быстрый: только коэффициенты и данные приложения (меньше всего токенов)</option>
+      <option value="math">📐 Только математика: модель по коэффициентам и архиву Фонбета, без ИИ (0 токенов)</option>
+      <option value="quick">⚡ Быстрый: аналитик ИИ без поиска в интернете (1 запрос)</option>
+      <option value="deep">🧠 Глубокий: разведчик ищет составы, травмы, новости + аналитик (2 запроса)</option>
+      <option value="max">🏆 Максимум: разведчик + аналитик дважды + критик (4–5 запросов)</option>
     </select>
     <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-top:8px"><input type="checkbox" id="detailChk" checked style="margin-top:3px"><span>📖 Полное обоснование по нажатию на ставку (ИИ пишет больше текста; выключите, чтобы тратить меньше токенов)</span></label>
     <div class="hint" id="anHint" style="text-align:left"></div>
-    <div class="d-title" style="margin-top:14px">Ключи Gemini API (основной + 10 запасных)</div>
-    <div class="hint" style="text-align:left">Если ключ не сработал или на нём закончился лимит, программа сама перейдёт к следующему и запомнит рабочий: следующие запросы начнутся с него. Ключи хранятся только в этом браузере.</div>
-    <div id="keyRows"></div>
-    <div class="ex-row"><button id="keyToggle">👁 Показать</button><button id="keyCheckAll">🔑 Проверить все ключи</button></div>
-    <div class="hint" id="keyReport" style="text-align:left"></div>
+    <div class="d-title" style="margin-top:14px">📚 Архив итогов Фонбета (статистика команд)</div>
+    <select id="arcDays" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-top:4px">
+      <option value="0">Выключен</option><option value="14">14 дней</option><option value="30">30 дней</option><option value="60">60 дней</option><option value="90">90 дней</option>
+    </select>
+    <div class="hint" id="arcInfo" style="text-align:left"></div>
+    <div class="hint" style="text-align:left">Приложение само скачивает итоги всех матчей Фонбета за выбранный срок и считает по ним форму, голы, таймы, отдых и рейтинг команд. Первая загрузка — около 1–2 МБ на день, дальше докачиваются только новые дни. Хранится в этом браузере.</div>
+    <div class="d-title" style="margin-top:14px">🤖 Искусственный интеллект и ключи</div>
+    <div class="input-group"><label>Какой ИИ анализирует:</label><select id="aiProv"></select></div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin:6px 0"><input type="checkbox" id="aiFallback" style="margin-top:3px"><span>Если у выбранного ИИ закончились ключи или лимит, пробовать другие ИИ, у которых есть ключи</span></label>
+    <div class="hint" style="text-align:left">Нажмите на название ИИ, чтобы развернуть или свернуть его ключи. «➕ Добавить ключ» добавляет новое поле. Если на ключе закончился лимит или он не работает, программа сама переходит к следующему ключу этого ИИ и запоминает рабочий. Ключи хранятся только в этом браузере.</div>
+    <div id="aiBlocks"></div>
   </div>
 </div>
 <div class="modal" id="matchModal" style="display:none">
@@ -322,8 +336,7 @@ let DC_MAP = (() => { try { return JSON.parse(localStorage.getItem('fb_dc') || '
 let currentPicks = {}, dt = null, expScope = 'live', expN = 5, expResult = null, expVisible = 0, expRisk = { low: true, medium: false, high: false };
 const expSel = new Set(), showAllMk = new Set();
 let modalId = null;
-const MAX_KEYS = 11;
-let keys = Array(MAX_KEYS).fill(''), keyInfo = Array(MAX_KEYS).fill(null), activeKey = 0, toastTimer = null;
+let toastTimer = null;
 let paused = false, loading = false, nextAt = 0, pollTimer = null, lastOkAt = 0, lastErr = '';
 
 const $ = id => document.getElementById(id);
@@ -334,25 +347,22 @@ const clock = (t = Date.now()) => { const d = new Date(t); return `${pad(d.getHo
 /* ================= Инициализация ================= */
 window.addEventListener('load', () => {
   const b = localStorage.getItem('fb_backend'); if (b) $('backendUrl').value = b;
-  loadKeys();
+  loadAi();
   const iv = localStorage.getItem('fb_interval'); if (iv) $('intervalSelect').value = iv;
   const trk = localStorage.getItem('fb_tracker'); if (trk) $('trackerUrl').value = trk;
   const src = localStorage.getItem('fb_src'); if (src) $('srcMode').value = src;
   const am = localStorage.getItem('fb_anmode') || (localStorage.getItem('fb_deep') === '0' ? 'quick' : 'deep'); $('anMode').value = am;
   const dt0 = localStorage.getItem('fb_detail'); if (dt0 !== null) $('detailChk').checked = dt0 === '1';
-  const upAn = () => {
-    $('anModeTxt').textContent = $('anMode').value === 'deep' ? '🧠 глубокий' : '⚡ быстрый';
-    $('anHint').textContent = $('anMode').value === 'deep'
-      ? ($('detailChk').checked ? 'Расход максимальный: поиск в интернете + длинный ответ.' : 'Расход высокий: поиск в интернете, ответ короткий.')
-      : ($('detailChk').checked ? 'Расход небольшой: без поиска, но с полным обоснованием.' : 'Расход минимальный: без поиска и с коротким ответом.');
-  };
-  $('anMode').addEventListener('change', () => { saveConfig(); upAn(); });
-  $('detailChk').addEventListener('change', () => { saveConfig(); upAn(); });
-  upAn();
+  $('anMode').addEventListener('change', () => { saveConfig(); updAnHint(); });
+  $('detailChk').addEventListener('change', () => { saveConfig(); updAnHint(); });
 
   $('backendUrl').addEventListener('change', saveConfig);
   $('modelSelect').addEventListener('change', saveConfig);
   initSettings();
+  initAiSettings(); updAnHint();
+  $('arcDays').value = String(arcDepth());
+  $('arcDays').addEventListener('change', () => { localStorage.setItem('fb_arc_days', $('arcDays').value); archiveSync(); });
+  setTimeout(archiveSync, 5000); setInterval(archiveSync, 20 * 60e3);
   $('btnRefresh').addEventListener('click', () => loadOdds());
   $('btnTop').addEventListener('click', analyzeTopLine);
   $('searchInput').addEventListener('input', () => { visibleLimit = 60; renderMatches(); });
@@ -523,7 +533,7 @@ function buildMatches(data){
     });
 
     fresh.push({
-      idx: fresh.length, sortOrder: String(ev.sortOrder || ''), blocked: blockMap[ev.id] === 'blocked', info: infoMap[ev.id] || null, id: ev.id, team1: ev.team1 || 'Команда 1', team2: ev.team2 || 'Команда 2',
+      idx: fresh.length, sortOrder: String(ev.sortOrder || ''), t1id: ev.team1Id !== undefined ? String(ev.team1Id) : '', t2id: ev.team2Id !== undefined ? String(ev.team2Id) : '', blocked: blockMap[ev.id] === 'blocked', info: infoMap[ev.id] || null, id: ev.id, team1: ev.team1 || 'Команда 1', team2: ev.team2 || 'Команда 2',
       league, sport: sportName, sportKey: grp.key, sportIcon: grp.icon, sportCategory: sportName.toLowerCase(), tier: leagueTier(league),
       status, start, place: ev.place || '',
       score: `${s1} : ${s2}`, comment: misc.comment || '',
@@ -679,6 +689,7 @@ function processData(data){
   let fresh = buildMatches(data);
   if (verifyDC(fresh)) fresh = buildMatches(data);
   setTop(data, fresh);
+  trackOpenOdds(fresh);
   const firstLoad = Object.keys(prevState).length === 0;
 
   fresh.forEach(m => {
@@ -709,7 +720,7 @@ function processData(data){
   }
   fresh.forEach(m => finishedStore.delete(m.id));
   updateTracking(fresh, !prevReal.length || fresh.length >= prevReal.length * 0.5);
-  startupDone = true; syncResults(false).then(() => { if (!resOk) maybeResolve(); }); syncTracker(false, fresh);
+  startupDone = true; syncResults(false).then(() => { if (!resOk) maybeResolve(); }); syncTracker(false, fresh); lineupRecheck();
   renderStats();
   while (finishedStore.size > 150) finishedStore.delete(finishedStore.keys().next().value);
 
@@ -1045,6 +1056,7 @@ function renderDetails(m){
   });
 
   if (!focus){
+    const mb = modelBlockHtml(m); if (mb) h += mkBlock(m.id + '|model', '📐 Модель и статистика (без ИИ)', mb, true);
     if (m.extra.length) h += mkBlock(m.id + '|extra', `Другие рынки (${Math.min(40, m.extra.length)})`, `<div class="chips">` + m.extra.slice(0, 40).map(e => chip(e.label, e.v)).join('') + `</div>`, true);
     const meta = [
       ['Спорт', m.sport], ['Турнир', m.league],
@@ -1127,112 +1139,391 @@ function tick(){
   setSync();
 }
 
-/* ================= Gemini: ключ и модели ================= */
+/* ================= ИИ: несколько провайдеров, ключи с автопереключением, модели ================= */
 function toast(text){
   const el = $('toast'); el.textContent = text; el.style.display = 'block';
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.style.display = 'none'; }, 6000);
 }
-function loadKeys(){
-  let arr = [];
-  try { arr = JSON.parse(localStorage.getItem('fb_keys') || '[]'); } catch (e){}
-  if (!arr.length){ const old = localStorage.getItem('fb_gemini'); if (old) arr = [old]; }
-  keys = Array.from({ length: MAX_KEYS }, (_, i) => String(arr[i] || '').trim());
-  activeKey = parseInt(localStorage.getItem('fb_key_idx') || '0', 10) || 0;
-  if (!keys[activeKey]){ const j = keys.findIndex(k => k); activeKey = j < 0 ? 0 : j; }
-  $('keyRows').innerHTML = keys.map((k, i) => `<div class="key-row"><span class="key-n">${i + 1}</span><input type="password" class="key-input" data-slot="${i}" value="${esc(k)}" placeholder="${i ? 'Запасной ключ' : 'Основной ключ'} AIzaSy..." autocomplete="off"><span class="key-badge" id="kb${i}"></span></div>`).join('');
-  keyBadges();
-}
-function saveKeys(){ localStorage.setItem('fb_keys', JSON.stringify(keys)); localStorage.setItem('fb_key_idx', String(activeKey)); }
-function keyBadges(){
-  for (let i = 0; i < MAX_KEYS; i++){
-    const el = $('kb' + i); if (!el) continue;
-    const inf = keyInfo[i];
-    let t = '', c = 'var(--muted)';
-    if (keys[i]){
-      if (i === activeKey){ t = '▶ активный'; c = 'var(--accent)'; }
-      if (inf && inf.state === 'ok' && i !== activeKey){ t = '✅ рабочий'; c = 'var(--accent)'; }
-      if (inf && inf.state === 'bad'){ t = '❌ ' + inf.msg; c = 'var(--red)'; }
-    }
-    el.textContent = t; el.style.color = c;
+const PROV = {
+  gemini:   { name:'Gemini',   ph:'AIzaSy...',  search:true,  how:'Бесплатные ключи: aistudio.google.com/apikey. Лимиты Google считает на проект, а не на ключ: ключи из разных проектов дают больше бесплатных запросов.' },
+  deepseek: { name:'DeepSeek', ph:'sk-...',     search:false, base:'https://api.deepseek.com', how:'Ключи: platform.deepseek.com (оплата по балансу). Поиска в интернете в API DeepSeek нет: разведку в интернете сделает другой ИИ с ключом (если включено ниже) или анализ пойдёт без неё.' },
+  qwen:     { name:'Qwen',     ph:'sk-...',     search:true,  base:'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', how:'Ключи: Alibaba Cloud Model Studio (оплата по балансу, есть пробный бесплатный объём). Ключ работает только в своём регионе: если не подходит, вставьте адрес своего рабочего пространства (…/compatible-mode/v1).' },
+  claude:   { name:'Claude',   ph:'sk-ant-...', search:true,  base:'https://api.anthropic.com', how:'Ключи: console.anthropic.com (оплата по балансу, бесплатного лимита нет). Поиск в интернете оплачивается отдельно.' },
+  apifb:    { name:'API-Football', ph:'ключ API-Football', data:true, how:'Бесплатно 100 запросов в день: dashboard.api-football.com. Даёт для футбола составы, травмы, стадион, судью, сравнение команд. Один глубокий разбор тратит 2–4 запроса.' }
+};
+const AI_LIST = ['gemini', 'deepseek', 'qwen', 'claude'];
+const DEF_MODELS = { deepseek:['deepseek-v4-pro', 'deepseek-flash', 'deepseek-chat', 'deepseek-reasoner'], qwen:['qwen3.8-max', 'qwen3.8-flash', 'qwen-max', 'qwen-plus', 'qwen-flash'], claude:['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5'] };
+let aiCfg = { prov:'gemini', fallback:false, base:{}, model:{} }, aiKeys = {}, aiIdx = {}, aiInfo = {};
+const kOpen = new Set(), kShow = new Set();
+
+function loadAi(){
+  const get = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v === null || v === undefined ? d : v; } catch (e){ return d; } };
+  aiCfg = Object.assign({ prov:'gemini', fallback:false, base:{}, model:{} }, get('fb_ai', {}));
+  aiCfg.base = aiCfg.base || {}; aiCfg.model = aiCfg.model || {};
+  aiKeys = get('fb_ai_keys', null); aiIdx = get('fb_ai_idx', {}) || {};
+  if (!aiKeys || typeof aiKeys !== 'object'){
+    let old = get('fb_keys', []); if (!Array.isArray(old)) old = [];
+    if (!old.some(Boolean) && localStorage.getItem('fb_gemini')) old = [localStorage.getItem('fb_gemini')];
+    const oi = parseInt(localStorage.getItem('fb_key_idx') || '0', 10) || 0;
+    const list = old.map(s => String(s || '').trim());
+    aiKeys = { gemini: list.filter(Boolean) };
+    aiIdx = { gemini: Math.max(0, list.slice(0, oi).filter(Boolean).length) };
+    if (!aiCfg.model.gemini) aiCfg.model.gemini = localStorage.getItem('fb_model') || '';
   }
+  Object.keys(PROV).forEach(p => {
+    if (!Array.isArray(aiKeys[p])) aiKeys[p] = [];
+    aiKeys[p] = aiKeys[p].map(s => String(s || '').trim());
+    if (!aiKeys[p].length) aiKeys[p].push('');
+    if (!(aiIdx[p] >= 0 && aiIdx[p] < aiKeys[p].length)) aiIdx[p] = 0;
+    aiInfo[p] = aiInfo[p] || [];
+  });
+  if (!PROV[aiCfg.prov] || PROV[aiCfg.prov].data) aiCfg.prov = 'gemini';
+  kOpen.add(aiCfg.prov);
 }
-function markKey(i, state, msg){ keyInfo[i] = { state, msg }; keyBadges(); }
-function shortReason(status, data){
-  const msg = String((data && data.error && data.error.message) || '').toLowerCase();
-  if (status === 429 || /quota|exhaust|rate/.test(msg)) return 'лимит';
-  if (/expired/.test(msg)) return 'истёк';
-  if (/not valid|invalid/.test(msg)) return 'недействителен';
-  return 'ошибка ' + status;
+function saveAi(){
+  try {
+    localStorage.setItem('fb_ai', JSON.stringify(aiCfg));
+    localStorage.setItem('fb_ai_keys', JSON.stringify(aiKeys));
+    localStorage.setItem('fb_ai_idx', JSON.stringify(aiIdx));
+  } catch (e){}
 }
-function keyOrder(){
-  const order = [];
-  for (let j = 0; j < MAX_KEYS; j++){ const i = (activeKey + j) % MAX_KEYS; if (keys[i]) order.push(i); }
-  return order;
+const aiName = (p = aiCfg.prov) => PROV[p] ? PROV[p].name : p;
+const provBase = p => String((aiCfg.base && aiCfg.base[p]) || PROV[p].base || '').trim().replace(/\/$/, '');
+const provHasKeys = p => (aiKeys[p] || []).some(Boolean);
+const claudeHeaders = k => ({ 'x-api-key': k, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json' });
+/* порядок ключей: с последнего рабочего; ключи «на лимите» и недействительные пробуем в последнюю очередь */
+function keyOrderOf(p){
+  const ks = aiKeys[p] || [], n = ks.length, st = aiIdx[p] || 0, now = Date.now(), good = [], later = [];
+  for (let j = 0; j < n; j++){
+    const i = (st + j) % n; if (!ks[i]) continue;
+    const inf = aiInfo[p][i];
+    if (inf && (inf.state === 'bad' || (inf.state === 'limit' && inf.until > now))) later.push(i); else good.push(i);
+  }
+  return good.concat(later);
 }
-function isKeyError(status, data){
-  const e = data && data.error, msg = e ? String(e.message || '') : '', st = e ? String(e.status || '') : '';
-  if (status === 401 || status === 403 || status === 429) return true;
-  if (['RESOURCE_EXHAUSTED', 'PERMISSION_DENIED', 'UNAUTHENTICATED'].includes(st)) return true;
-  return status === 400 && /api key|API_KEY_INVALID|expired|key not valid/i.test(msg);
+const keyOrder = () => keyOrderOf(aiCfg.prov);
+function errText(data){
+  if (!data) return '';
+  const e = data.error;
+  if (typeof e === 'string') return e;
+  if (e && e.message) return String(e.message);
+  if (data.errors && typeof data.errors === 'object'){ const v = Array.isArray(data.errors) ? data.errors : Object.values(data.errors); if (v.length) return v.join('; '); }
+  if (data.message && typeof data.message === 'string') return data.message;
+  return '';
 }
-/* Запрос к Gemini с автоподбором ключа: начинаем с последнего рабочего, при ошибке ключа/лимита берём следующий */
-async function geminiFetch(url, init){
-  const order = keyOrder(), start = activeKey;
-  if (!order.length) throw new Error('⚠️ Не введён ни один ключ Gemini API. Откройте ⚙️ Настройки.');
-  let lastMsg = '';
+/* 'limit' — лимит/баланс исчерпан, 'bad' — ключ недействителен, null — ключ в порядке */
+function classifyKeyErr(p, status, data){
+  const msg = errText(data), e = data && data.error, st = String((e && typeof e === 'object' && (e.status || e.type || e.code)) || '');
+  if (p === 'apifb'){
+    if (/limit|too many requests|requests per/i.test(msg)) return 'limit';
+    if (/token|api ?key|application key|not subscribed|suspended/i.test(msg)) return 'bad';
+    if (status === 401 || status === 403) return 'bad';
+    return status === 429 ? 'limit' : null;
+  }
+  if (status === 429 || status === 402 || /RESOURCE_EXHAUSTED|rate_limit|insufficient_quota|Arrearage|Throttling/i.test(st) ||
+      /quota|exceeded your|rate limit|too many requests|insufficient (balance|quota)|credit balance|balance is too low|arrearage|余额/i.test(msg)) return 'limit';
+  if (status === 401 || status === 403 || /UNAUTHENTICATED|PERMISSION_DENIED|authentication_error|permission_error|invalid_api_key|InvalidApiKey/i.test(st) ||
+      (status === 400 && /api key|API_KEY_INVALID|key not valid|key expired|invalid.{0,12}key/i.test(msg))) return 'bad';
+  return null;
+}
+function setKeyInfo(p, i, state, msg, until){ aiInfo[p][i] = { state, msg, until: until || 0, at: Date.now() }; paintKeyBlock(p); }
+/* запрос с автоподбором ключа: начинаем с последнего рабочего, при лимите или неверном ключе берём следующий */
+async function provFetch(p, build){
+  const order = keyOrderOf(p);
+  if (!order.length){ const e = new Error(`⚠️ Нет ключей ${aiName(p)}. Откройте ⚙️ Настройки и добавьте ключ.`); e.code = 'nokeys'; throw e; }
+  const start = aiIdx[p] || 0; let lastMsg = '', lastKind = '';
   for (const i of order){
-    const r = await fetch(url, Object.assign({}, init, { headers: Object.assign({}, init.headers || {}, { 'x-goog-api-key': keys[i] }) }));
-    let data = {}; try { data = await r.json(); } catch (e){}
-    if (!isKeyError(r.status, data)){
-      markKey(i, 'ok', '');
-      if (i !== activeKey){ activeKey = i; saveKeys(); keyBadges(); toast(`🔑 Ключ №${start + 1} не сработал, переключился на ключ №${i + 1}`); }
-      return { data, key: i };
+    const { url, init } = build(aiKeys[p][i]);
+    let r;
+    try { r = await fetch(url, init); }
+    catch (err){
+      if (err.name === 'AbortError') throw err;
+      const e = new Error(`❌ Нет связи с ${aiName(p)}: ${err.message}. Причины: нет интернета, нужен VPN, или сервис не разрешает запросы прямо со страницы (CORS).`); e.code = 'net'; throw e;
     }
-    lastMsg = (data.error && data.error.message) || ('HTTP ' + r.status);
-    markKey(i, 'bad', shortReason(r.status, data));
+    let data = {}; const txt = await r.text();
+    try { data = txt ? JSON.parse(txt) : {}; } catch (e){ data = { _raw: txt.slice(0, 300) }; }
+    const kind = classifyKeyErr(p, r.status, data);
+    if (!kind){
+      if (!aiInfo[p][i] || aiInfo[p][i].state !== 'ok') setKeyInfo(p, i, 'ok', '');
+      if (i !== start){ aiIdx[p] = i; saveAi(); paintKeyBlock(p); toast(`🔑 ${aiName(p)}: ключ №${start + 1} не сработал, переключился на ключ №${i + 1}`); }
+      return { data, status: r.status, key: i, headers: r.headers };
+    }
+    lastMsg = errText(data) || ('HTTP ' + r.status); lastKind = kind;
+    const daily = /day|daily|per ?day|сутк/i.test(lastMsg);
+    setKeyInfo(p, i, kind, kind === 'limit' ? 'лимит' : (/expired/i.test(lastMsg) ? 'истёк' : 'недействителен'), kind === 'limit' ? Date.now() + (daily ? 6 * 3600e3 : 10 * 60e3) : 0);
   }
-  throw new Error(`❌ Ни один из ключей (${order.length}) не сработал. Последняя ошибка: ${lastMsg}`);
+  const e = new Error(`❌ ${aiName(p)}: ни один ключ (${order.length}) не сработал. ${lastKind === 'limit' ? 'На всех ключах закончился лимит или баланс. ' : ''}Последняя ошибка: ${String(lastMsg).slice(0, 220)}`);
+  e.code = 'keys'; e.kind = lastKind; throw e;
 }
 
-async function checkAllKeys(){
-  const rep = $('keyReport'); let ok = 0, total = 0;
-  rep.textContent = '⏳ Проверяю ключи...';
-  for (let i = 0; i < MAX_KEYS; i++){
-    if (!keys[i]) continue; total++;
+/* ---------- модели ---------- */
+async function listModels(p){
+  if (p === 'gemini'){
+    const { data } = await provFetch(p, k => ({ url: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', init: { headers: { 'x-goog-api-key': k } } }));
+    if (data.error) throw new Error('❌ ' + data.error.message + (/location/i.test(data.error.message) ? ' Gemini недоступен из вашего региона или через текущий VPN: смените страну VPN.' : ''));
+    const ms = (data.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent')).map(m => m.name.replace('models/', ''))
+      .filter(n => n.startsWith('gemini') && !/embedding|tts|image|live|audio|robotics/.test(n));
+    ms.sort((a, b) => (b.includes('flash') - a.includes('flash')) || b.localeCompare(a));
+    return ms;
+  }
+  const url = p === 'claude' ? provBase(p) + '/v1/models?limit=100' : provBase(p) + '/models';
+  const { data } = await provFetch(p, k => ({ url, init: { headers: p === 'claude' ? claudeHeaders(k) : { Authorization: 'Bearer ' + k } } }));
+  let ms = (Array.isArray(data.data) ? data.data : []).map(x => x && x.id).filter(Boolean);
+  if (p === 'qwen') ms = ms.filter(n => /qwen|deepseek/i.test(n) && !/vl|audio|tts|embed|image|omni|asr|mt-|ocr|coder/i.test(n));
+  if (p === 'deepseek') ms = ms.filter(n => /deepseek/i.test(n));
+  if (!ms.length) ms = (DEF_MODELS[p] || []).slice();
+  return ms;
+}
+async function loadModels(){
+  const p = aiCfg.prov, st = $('keyStatus'), sel = $('modelSelect');
+  paintAiName();
+  if (!keyOrderOf(p).length){
+    st.className = 'key-status bad'; st.textContent = `Нет ключа ${aiName(p)}: откройте ⚙️ Настройки → «Искусственный интеллект»`;
+    sel.innerHTML = `<option value="">— добавьте ключ ${esc(aiName(p))} в ⚙️ —</option>`; return;
+  }
+  st.className = 'key-status'; st.textContent = `⏳ Проверяю ключ ${aiName(p)}...`;
+  let ms = [], err = '';
+  try { ms = await listModels(p); } catch (e){ err = e.message; if (DEF_MODELS[p]) ms = DEF_MODELS[p].slice(); }
+  if (p !== aiCfg.prov) return;
+  if (!ms.length){ st.className = 'key-status bad'; st.textContent = err || '⚠️ Ключ принят, но подходящих моделей нет'; return; }
+  sel.innerHTML = ms.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  const saved = aiCfg.model[p];
+  if (saved && ms.includes(saved)) sel.value = saved;
+  aiCfg.model[p] = sel.value; saveAi();
+  st.className = err ? 'key-status bad' : 'key-status ok';
+  st.textContent = err ? err + ' Показан список моделей по умолчанию: можно попробовать.' : `✅ ${aiName(p)}: ключ №${(aiIdx[p] || 0) + 1} рабочий. Доступно моделей: ${ms.length}`;
+}
+
+/* ---------- вызов модели (единый для всех ИИ) ---------- */
+async function geminiCall(model, prompt, o, signal){
+  let think = !!o.thinking;
+  for (let attempt = 0; attempt < 2; attempt++){
+    const body = { contents: [{ role: 'user', parts: [{ text: prompt }] }] }, gc = {};
+    if (o.system) body.systemInstruction = { parts: [{ text: o.system }] };
+    if (o.search) body.tools = [{ google_search: {} }];
+    else if (o.json) gc.responseMimeType = 'application/json';
+    if (o.temp !== undefined) gc.temperature = o.temp;
+    if (think) gc.thinkingConfig = /gemini-2\./.test(model) ? { thinkingBudget: -1 } : { thinkingLevel: 'high' };
+    if (Object.keys(gc).length) body.generationConfig = gc;
+    const { data } = await provFetch('gemini', k => ({ url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': k }, body: JSON.stringify(body), signal } }));
+    if (data.error){
+      const m = String(data.error.message || '');
+      if (think && /think/i.test(m)){ think = false; continue; }
+      const e = new Error(`❌ Ошибка Gemini (${model}): ${m}`); if (/google_search|ground|tool/i.test(m)) e.code = 'tool'; throw e;
+    }
+    const cand = data.candidates && data.candidates[0];
+    const sources = ((cand && cand.groundingMetadata && cand.groundingMetadata.groundingChunks) || []).map(c => c.web).filter(Boolean).map(w => ({ uri: w.uri, title: w.title }));
+    const text = cand && cand.content && cand.content.parts ? cand.content.parts.filter(x => !x.thought).map(x => x.text || '').join('') : '';
+    if (!text) throw new Error('⚠️ Пустой ответ Gemini. ' + (data.promptFeedback && data.promptFeedback.blockReason ? 'Запрос заблокирован: ' + data.promptFeedback.blockReason : (cand && cand.finishReason ? 'Причина: ' + cand.finishReason : '')));
+    return { text, sources, searched: !!o.search };
+  }
+}
+async function oaiCall(p, model, prompt, o, signal){
+  const msgs = []; if (o.system) msgs.push({ role: 'system', content: o.system });
+  msgs.push({ role: 'user', content: prompt + (o.json ? '\n\nОтвет строго в формате JSON.' : '') });
+  let useFmt = !!o.json && !o.search;
+  for (let attempt = 0; attempt < 2; attempt++){
+    const body = { model, messages: msgs, max_tokens: o.maxTokens || 6000 };
+    if (o.temp !== undefined) body.temperature = o.temp;
+    if (useFmt) body.response_format = { type: 'json_object' };
+    if (o.search && p === 'qwen') body.enable_search = true;
+    const { data } = await provFetch(p, k => ({ url: provBase(p) + '/chat/completions',
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + k }, body: JSON.stringify(body), signal } }));
+    if (data.error || !Array.isArray(data.choices)){
+      const m = errText(data) || data._raw || 'неизвестная ошибка';
+      if (useFmt && /response_format|json/i.test(m)){ useFmt = false; continue; }
+      const e = new Error(`❌ Ошибка ${aiName(p)} (${model}): ${String(m).slice(0, 300)}`); if (/search/i.test(m)) e.code = 'tool'; throw e;
+    }
+    const text = String((data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '');
+    if (!text.trim()) throw new Error(`⚠️ ${aiName(p)} вернул пустой ответ.`);
+    return { text, sources: [], searched: !!(o.search && p === 'qwen') };
+  }
+}
+async function claudeCall(model, prompt, o, signal){
+  const msgs = [{ role: 'user', content: prompt + (o.json ? '\n\nОтвет: только JSON-объект, без текста до и после.' : '') }];
+  const body = { model, max_tokens: o.maxTokens || 6000, messages: msgs };
+  if (o.system) body.system = o.system;
+  if (o.temp !== undefined) body.temperature = o.temp;
+  if (o.search) body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: o.maxSearch || 6 }];
+  let text = ''; const sources = [];
+  for (let turn = 0; turn < 4; turn++){
+    const { data } = await provFetch('claude', k => ({ url: provBase('claude') + '/v1/messages', init: { method: 'POST', headers: claudeHeaders(k), body: JSON.stringify(body), signal } }));
+    if (data.type === 'error' || data.error){ const m = errText(data); const e = new Error(`❌ Ошибка Claude (${model}): ${m}`); if (/web.?search|tool/i.test(m)) e.code = 'tool'; throw e; }
+    text = '';
+    (data.content || []).forEach(b => {
+      if (b.type === 'text'){ text += b.text || ''; (b.citations || []).forEach(c => { if (c.url) sources.push({ uri: c.url, title: c.title }); }); }
+      if (b.type === 'web_search_tool_result' && Array.isArray(b.content)) b.content.forEach(r => { if (r.url) sources.push({ uri: r.url, title: r.title }); });
+    });
+    if (data.stop_reason === 'pause_turn'){ body.messages = msgs.concat([{ role: 'assistant', content: data.content }]); continue; }
+    break;
+  }
+  if (!text.trim()) throw new Error('⚠️ Claude вернул пустой ответ.');
+  const seen = new Set();
+  return { text, sources: sources.filter(s => !seen.has(s.uri) && seen.add(s.uri)), searched: !!o.search };
+}
+async function aiCall(p, model, prompt, o){
+  const ms = o.timeout || (o.search ? 150000 : 100000);
+  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    if (p === 'gemini') return await geminiCall(model, prompt, o, ctrl.signal);
+    if (p === 'claude') return await claudeCall(model, prompt, o, ctrl.signal);
+    return await oaiCall(p, model, prompt, o, ctrl.signal);
+  } catch (err){
+    if (err.name === 'AbortError') throw new Error(`⏳ ${aiName(p)} не ответил за ${Math.round(ms / 1000)} с. Попробуйте другую модель или VPN.`);
+    throw err;
+  } finally { clearTimeout(timer); }
+}
+const modelOf = p => p === aiCfg.prov ? ($('modelSelect').value || aiCfg.model[p] || '') : (aiCfg.model[p] || (DEF_MODELS[p] || [])[0] || '');
+/* ИИ для поиска в интернете: выбранный, если умеет искать, иначе другой с ключом и поиском */
+function searchProv(){
+  if (PROV[aiCfg.prov].search && provHasKeys(aiCfg.prov)) return aiCfg.prov;
+  return AI_LIST.find(p => p !== aiCfg.prov && PROV[p].search && provHasKeys(p) && modelOf(p)) || null;
+}
+/* o: { json, search, thinking, system, temp, maxTokens, prov (принудительно), timeout } */
+async function aiRequest(prompt, o = {}){
+  const main = o.prov || aiCfg.prov;
+  const order = [main].concat(aiCfg.fallback && !o.prov ? AI_LIST.filter(p => p !== main && provHasKeys(p) && modelOf(p) && (!o.search || PROV[p].search)) : []);
+  let lastErr = null;
+  for (const p of order){
+    const model = modelOf(p);
+    if (!model){ lastErr = new Error(`⚠️ Выберите модель ${aiName(p)} (кнопка «Проверить ключи» в ⚙️).`); continue; }
     try {
-      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=5', { headers: { 'x-goog-api-key': keys[i] } });
-      const d = await r.json();
-      if (d.error) markKey(i, 'bad', shortReason(r.status, d)); else { markKey(i, 'ok', ''); ok++; }
-    } catch (e){ markKey(i, 'bad', 'нет связи'); }
+      const r = await aiCall(p, model, prompt, o);
+      r.prov = p; r.model = model;
+      if (p !== main){ r.fellTo = p; toast(`🔁 ${aiName(main)} недоступен, ответил ${aiName(p)}`); }
+      return r;
+    } catch (e){ lastErr = e; if (!['keys', 'nokeys', 'net'].includes(e.code)) throw e; }
   }
-  const cur = keyInfo[activeKey];
-  if (!keys[activeKey] || (cur && cur.state === 'bad')){
-    const j = keys.findIndex((k, i) => k && keyInfo[i] && keyInfo[i].state === 'ok');
-    if (j >= 0){ activeKey = j; saveKeys(); }
+  throw lastErr || new Error('⚠️ Нет доступного ИИ');
+}
+/* совместимость со старым кодом */
+async function geminiRequest(promptText, asJson, search){ const r = await aiRequest(promptText, { json: asJson, search }); lastGrounding = r.sources || []; return r.text; }
+async function callGemini(promptText){
+  const out = $('aiOutput');
+  out.textContent = `⏳ ${aiName()}: отправка запроса...`;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  try { out.textContent = (await aiRequest(promptText, {})).text; } catch (err){ out.textContent = err.message; }
+}
+
+/* ---------- настройки ключей: сворачиваемые блоки, «+ ключ», проверка ---------- */
+function paintAiName(){
+  document.querySelectorAll('.ai-nm').forEach(e => { e.textContent = aiName(); });
+  ['aiProv', 'aiProvMain'].forEach(id => { const s = $(id); if (s && s.value !== aiCfg.prov) s.value = aiCfg.prov; });
+}
+function keyBadgeHtml(p, i){
+  const inf = aiInfo[p][i]; if (!aiKeys[p][i]) return '';
+  if (inf && inf.state === 'bad') return `<span style="color:var(--red)">❌ ${esc(inf.msg)}</span>`;
+  if (inf && inf.state === 'limit' && inf.until > Date.now()) return `<span style="color:#ffb74d">⛔ лимит до ${clock(inf.until).slice(0, 5)}</span>`;
+  if (inf && inf.state === 'net') return `<span style="color:#ffb74d">⚠️ нет связи</span>`;
+  if (i === (aiIdx[p] || 0)) return `<span style="color:var(--accent)">▶ активный${inf && inf.msg ? ' · ' + esc(inf.msg) : ''}</span>`;
+  if (inf && inf.state === 'ok') return `<span style="color:var(--accent)">✅ рабочий${inf.msg ? ' · ' + esc(inf.msg) : ''}</span>`;
+  return '';
+}
+function keySummary(p){
+  const ks = aiKeys[p], n = ks.filter(Boolean).length, now = Date.now();
+  const lim = ks.filter((k, i) => k && aiInfo[p][i] && aiInfo[p][i].state === 'limit' && aiInfo[p][i].until > now).length;
+  const bad = ks.filter((k, i) => k && aiInfo[p][i] && aiInfo[p][i].state === 'bad').length;
+  return n ? `ключей: ${n} · активный №${(aiIdx[p] || 0) + 1}${lim ? ' · ⛔ на лимите: ' + lim : ''}${bad ? ' · ❌ ' + bad : ''}` : 'ключей нет';
+}
+function keyBlockHtml(p){
+  const P = PROV[p], show = kShow.has(p);
+  const rows = aiKeys[p].map((k, i) => `<div class="key-row"><span class="key-n">${i + 1}</span><input type="${show ? 'text' : 'password'}" class="key-input" data-prov="${p}" data-slot="${i}" value="${esc(k)}" placeholder="${i ? 'Запасной ключ' : 'Основной ключ'} ${esc(P.ph)}" autocomplete="off"><span class="key-badge" id="kb-${p}-${i}">${keyBadgeHtml(p, i)}</span><button class="key-del" data-kact="del" data-prov="${p}" data-slot="${i}" title="Удалить поле">✕</button></div>`).join('');
+  const base = P.base && !P.data ? `<div class="hint" style="text-align:left;margin:6px 0 2px">Адрес API (меняйте, только если ключ из другого региона):</div><input type="text" class="kbase" data-prov="${p}" value="${esc(provBase(p))}" placeholder="${esc(P.base)}">` : '';
+  return `<details class="kblock" data-prov="${p}" ${kOpen.has(p) ? 'open' : ''}><summary><b>${P.data ? '📊' : '🤖'} ${esc(P.name)}</b>${p === aiCfg.prov ? ' <span class="kcur">выбран</span>' : ''} <span class="ksum" id="ksum-${p}">${esc(keySummary(p))}</span></summary>
+    <div class="hint" style="text-align:left">${esc(P.how)}</div>${base}
+    <div class="krows" id="krows-${p}">${rows}</div>
+    <div class="ex-row"><button data-kact="add" data-prov="${p}">➕ Добавить ключ</button><button data-kact="show" data-prov="${p}">${show ? '🙈 Скрыть' : '👁 Показать'}</button><button data-kact="check" data-prov="${p}">🔑 Проверить ключи</button></div>
+    <div class="hint" id="krep-${p}" style="text-align:left"></div></details>`;
+}
+function renderKeyBlocks(){ const el = $('aiBlocks'); if (el) el.innerHTML = ['gemini', 'deepseek', 'qwen', 'claude', 'apifb'].map(keyBlockHtml).join(''); }
+function paintKeyBlock(p){
+  (aiKeys[p] || []).forEach((k, i) => { const el = $(`kb-${p}-${i}`); if (el) el.innerHTML = keyBadgeHtml(p, i); });
+  const s = $('ksum-' + p); if (s) s.textContent = keySummary(p);
+}
+function testReq(p, k){
+  if (p === 'gemini') return { url: 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=5', init: { headers: { 'x-goog-api-key': k } } };
+  if (p === 'claude') return { url: provBase(p) + '/v1/models?limit=1', init: { headers: claudeHeaders(k) } };
+  if (p === 'apifb') return { url: 'https://v3.football.api-sports.io/status', init: { headers: { 'x-apisports-key': k } } };
+  if (p === 'qwen') return { url: provBase(p) + '/chat/completions', init: { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + k }, body: JSON.stringify({ model: aiCfg.model.qwen || 'qwen-flash', messages: [{ role: 'user', content: 'ok' }], max_tokens: 1 }) } };
+  return { url: provBase(p) + '/models', init: { headers: { Authorization: 'Bearer ' + k } } };
+}
+async function checkKeys(p){
+  const rep = $('krep-' + p); if (rep) rep.textContent = '⏳ Проверяю ключи...';
+  let ok = 0, total = 0;
+  for (let i = 0; i < aiKeys[p].length; i++){
+    const k = aiKeys[p][i]; if (!k) continue; total++;
+    try {
+      const { url, init } = testReq(p, k);
+      const r = await fetch(url, init); let d = {}; try { d = await r.json(); } catch (e){}
+      const kind = classifyKeyErr(p, r.status, d);
+      if (!kind && r.status < 500){
+        let extra = '';
+        if (p === 'apifb' && d.response && d.response.requests) extra = `сегодня ${d.response.requests.current}/${d.response.requests.limit_day}`;
+        setKeyInfo(p, i, 'ok', extra); ok++;
+      } else if (kind) setKeyInfo(p, i, kind, kind === 'limit' ? 'лимит' : 'недействителен', kind === 'limit' ? Date.now() + 30 * 60e3 : 0);
+      else setKeyInfo(p, i, 'net', 'ошибка сервиса');
+    } catch (e){ setKeyInfo(p, i, 'net', 'нет связи'); }
   }
-  keyBadges();
-  rep.textContent = total ? `Рабочих ключей: ${ok} из ${total}. Активный: №${activeKey + 1}` : 'Ключи не введены.';
-  loadModels();
+  const cur = aiInfo[p][aiIdx[p] || 0];
+  if (!aiKeys[p][aiIdx[p] || 0] || (cur && cur.state !== 'ok')){
+    const j = aiKeys[p].findIndex((k, i) => k && aiInfo[p][i] && aiInfo[p][i].state === 'ok');
+    if (j >= 0){ aiIdx[p] = j; saveAi(); }
+  }
+  paintKeyBlock(p);
+  if (rep) rep.textContent = total ? `Рабочих ключей: ${ok} из ${total}. Активный: №${(aiIdx[p] || 0) + 1}` : 'Ключи не введены.';
+  if (p === aiCfg.prov) loadModels();
+}
+function setProv(p){
+  if (!PROV[p] || PROV[p].data) return;
+  aiCfg.prov = p; saveAi(); kOpen.add(p);
+  renderKeyBlocks(); paintAiName(); updAnHint(); loadModels(); renderAll();
+}
+function initAiSettings(){
+  const opts = AI_LIST.map(p => `<option value="${p}">${esc(aiName(p))}</option>`).join('');
+  ['aiProv', 'aiProvMain'].forEach(id => { const s = $(id); if (!s) return; s.innerHTML = opts; s.value = aiCfg.prov; s.addEventListener('change', () => setProv(s.value)); });
+  $('aiFallback').checked = !!aiCfg.fallback;
+  $('aiFallback').addEventListener('change', () => { aiCfg.fallback = $('aiFallback').checked; saveAi(); });
+  renderKeyBlocks();
+  const box = $('aiBlocks');
+  box.addEventListener('toggle', e => { const d = e.target; if (d && d.classList && d.classList.contains('kblock')){ if (d.open) kOpen.add(d.dataset.prov); else kOpen.delete(d.dataset.prov); } }, true);
+  box.addEventListener('input', e => {
+    const inp = e.target.closest('.key-input'); if (!inp) return;
+    const p = inp.dataset.prov, i = Number(inp.dataset.slot);
+    aiKeys[p][i] = inp.value.trim(); aiInfo[p][i] = null;
+    if (!aiKeys[p][aiIdx[p] || 0]){ const j = aiKeys[p].findIndex(Boolean); aiIdx[p] = j < 0 ? 0 : j; }
+    saveAi(); paintKeyBlock(p);
+  });
+  box.addEventListener('change', e => {
+    const inp = e.target.closest('.key-input'), base = e.target.closest('.kbase');
+    if (base){ aiCfg.base[base.dataset.prov] = base.value.trim(); saveAi(); if (base.dataset.prov === aiCfg.prov) loadModels(); return; }
+    if (inp && inp.dataset.prov === aiCfg.prov) loadModels();
+  });
+  box.addEventListener('click', e => {
+    const b = e.target.closest('[data-kact]'); if (!b) return;
+    e.preventDefault();
+    const p = b.dataset.prov, act = b.dataset.kact;
+    if (act === 'add'){
+      aiKeys[p].push(''); saveAi(); kOpen.add(p); renderKeyBlocks();
+      const inps = document.querySelectorAll(`.key-input[data-prov="${p}"]`); const last = inps[inps.length - 1]; if (last && last.focus) last.focus();
+    } else if (act === 'del'){
+      const i = Number(b.dataset.slot);
+      if (aiKeys[p].length <= 1){ aiKeys[p][0] = ''; aiInfo[p] = []; }
+      else { aiKeys[p].splice(i, 1); aiInfo[p].splice(i, 1); if ((aiIdx[p] || 0) > i) aiIdx[p]--; }
+      if (!(aiIdx[p] < aiKeys[p].length) || !aiKeys[p][aiIdx[p]]){ const j = aiKeys[p].findIndex(Boolean); aiIdx[p] = j < 0 ? 0 : j; }
+      saveAi(); renderKeyBlocks(); if (p === aiCfg.prov) loadModels();
+    } else if (act === 'show'){
+      if (kShow.has(p)) kShow.delete(p); else kShow.add(p); renderKeyBlocks();
+    } else if (act === 'check') checkKeys(p);
+  });
+  $('modelSelect').addEventListener('change', () => { aiCfg.model[aiCfg.prov] = $('modelSelect').value; saveAi(); });
 }
 
 function initSettings(){
   const modal = $('settingsModal');
-  $('btnGear').addEventListener('click', () => { modal.style.display = 'flex'; $('histInfo').textContent = `📚 База итогов приложения: ${hist.length} матчей. Она растёт, пока приложение открыто, и используется в прогнозах (форма команд, очные встречи).`; });
+  $('btnGear').addEventListener('click', () => { modal.style.display = 'flex'; $('histInfo').textContent = `📚 База итогов приложения: ${hist.length} матчей (растёт, пока приложение открыто).`; $('arcInfo').textContent = ARC.info || 'Архив Фонбета ещё не загружался'; renderKeyBlocks(); updAnHint(); });
   $('btnCloseSettings').addEventListener('click', () => { modal.style.display = 'none'; });
   modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
-  $('keyRows').addEventListener('input', e => {
-    const inp = e.target.closest('.key-input'); if (!inp) return;
-    const i = Number(inp.dataset.slot); keys[i] = inp.value.trim(); keyInfo[i] = null;
-    if (!keys[activeKey]){ const j = keys.findIndex(k => k); activeKey = j < 0 ? 0 : j; }
-    saveKeys(); keyBadges();
-  });
-  $('keyRows').addEventListener('change', () => loadModels());
-  $('keyToggle').addEventListener('click', () => {
-    const show = $('keyToggle').dataset.show !== '1';
-    $('keyToggle').dataset.show = show ? '1' : '0'; $('keyToggle').textContent = show ? '🙈 Скрыть' : '👁 Показать';
-    document.querySelectorAll('.key-input').forEach(i => { i.type = show ? 'text' : 'password'; });
-  });
-  $('keyCheckAll').addEventListener('click', checkAllKeys);
   $('backendUrl').addEventListener('change', () => { saveConfig(); loadOdds(); });
   $('trackerUrl').addEventListener('change', () => { saveConfig(); lastWatchKey = ''; syncTracker(true); });
   $('srcMode').addEventListener('change', () => { saveConfig(); loadOdds(); });
@@ -1263,62 +1554,6 @@ function initSettings(){
   }
 }
 
-async function loadModels(){
-  const st = $('keyStatus');
-  if (!keyOrder().length){ st.className = 'key-status bad'; st.textContent = 'Ключ не введён — откройте ⚙️ Настройки'; return; }
-  st.className = 'key-status'; st.textContent = '⏳ Проверяю ключ...';
-  try {
-    const { data, key } = await geminiFetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', {});
-    if (data.error){ st.className = 'key-status bad'; st.textContent = '❌ ' + data.error.message + (/location/i.test(data.error.message) ? ' Gemini недоступен из вашего региона или через текущий VPN: смените страну VPN.' : ''); return; }
-    const models = (data.models || [])
-      .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
-      .map(m => m.name.replace('models/', ''))
-      .filter(n => n.startsWith('gemini') && !/embedding|tts|image|live|audio|robotics/.test(n));
-    if (!models.length){ st.className = 'key-status bad'; st.textContent = '⚠️ Ключ принят, но подходящих моделей нет'; return; }
-    models.sort((a, b) => (b.includes('flash') - a.includes('flash')) || b.localeCompare(a));
-    const sel = $('modelSelect');
-    sel.innerHTML = models.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
-    const saved = localStorage.getItem('fb_model');
-    if (saved && models.includes(saved)) sel.value = saved;
-    saveConfig();
-    st.className = 'key-status ok'; st.textContent = `✅ Ключ №${key + 1} рабочий. Доступно моделей: ${models.length}`;
-  } catch (e){
-    st.className = 'key-status bad';
-    st.textContent = /^[❌⚠️]/.test(e.message) ? e.message : '❌ Нет связи с Google: ' + e.message + ' (попробуйте VPN)';
-  }
-}
-
-async function geminiRequest(promptText, asJson, search){
-  const model = $('modelSelect').value;
-  if (!keyOrder().length) throw new Error('⚠️ Не введён ни один ключ Gemini API. Откройте ⚙️ Настройки.');
-  if (!model) throw new Error('⚠️ Сначала нажмите «Проверить ключ» и выберите модель.');
-  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 60000);
-  try {
-    const body = { contents: [{ parts: [{ text: promptText }] }] };
-    if (search) body.tools = [{ google_search: {} }];
-    else if (asJson) body.generationConfig = { responseMimeType: 'application/json' };
-    const { data } = await geminiFetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal
-    });
-    if (data.error) throw new Error(`❌ Ошибка API (${model}): ${data.error.message}`);
-    const cand = data.candidates && data.candidates[0];
-    lastGrounding = ((cand && cand.groundingMetadata && cand.groundingMetadata.groundingChunks) || []).map(c => c.web).filter(Boolean).map(w => ({ uri: w.uri, title: w.title }));
-    const text = cand && cand.content && cand.content.parts && cand.content.parts.map(p => p.text || '').join('');
-    if (!text) throw new Error('⚠️ Пустой ответ. ' + (data.promptFeedback && data.promptFeedback.blockReason ? 'Запрос заблокирован: ' + data.promptFeedback.blockReason : ''));
-    return text;
-  } catch (err){
-    if (err.name === 'AbortError') throw new Error('⏳ Таймаут 60 секунд. Попробуйте другую модель или VPN.');
-    if (err instanceof TypeError) throw new Error('❌ Ошибка сети: ' + err.message + '. Проверьте интернет или VPN.');
-    throw err;
-  } finally { clearTimeout(timer); }
-}
-
-async function callGemini(promptText){
-  const out = $('aiOutput');
-  out.textContent = '⏳ Отправка запроса...';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  try { out.textContent = await geminiRequest(promptText, false); } catch (err){ out.textContent = err.message; }
-}
 
 const RISK = { low:'🟢 Надёжная', medium:'🟡 Средний риск', high:'🔴 Рискованная' };
 function parseBets(raw){
@@ -1407,7 +1642,7 @@ function aiButton(m){
 function aiBox(m){
   const r = aiResults[m.id];
   if (!r) return '';
-  if (r.state === 'loading') return `<div class="ai-box"><div class="log">⏳ Gemini анализирует матч...</div></div>`;
+  if (r.state === 'loading') return `<div class="ai-box"><div class="log">⏳ ${esc(r.stage || aiName() + ' анализирует матч...')}</div></div>`;
   if (r.state === 'error') return `<div class="ai-box"><div class="bad">${esc(r.text)}</div><button class="btn-more" data-act="reanalyze">🔄 Повторить</button></div>`;
   const d = r.data;
   let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная (подсвечены и в таблицах коэффициентов)</div>`;
@@ -1419,10 +1654,12 @@ function aiBox(m){
       const odd = e.key ? (sb ? sb.odds[e.key] : m.odds[e.key]) : b.odds;
       const bkey = (r.aid || m.id) + '|' + i;
       const ctx = { title: betTitle(m, e), who: w, odd, prob: Number(b.prob) || null, mkt: (e.key && !sb) ? marketProb(m, e.key) : null, reason: b.reason, detail: b.detail, risk: e.risk,
-        facts: d && d.facts, lineups: d && d.lineups, players: d && d.key_players, quality: d && d.data_quality, mode: r.mode, sources: r.sources, t1: m.team1, t2: m.team2 };
-      h += `<div class="bet ${e.risk}" data-bd="${esc(bkey)}"><div class="bet-top"><b>${esc(betTitle(m, e))}</b>${w ? `<span class="bet-who">→ ${esc(w)}</span>` : ''}<span class="bet-odd">${odd !== undefined && odd !== null ? 'кэф ' + esc(odd) : ''}</span><span class="bet-risk">${RISK[e.risk]}</span></div><div class="bet-why">${esc(b.reason || '')}</div>${probLine(m, e)}<div class="tap-hint">Нажмите на ставку: полное обоснование ›</div><div class="bet-detail ${betOpen.has(bkey) ? 'open' : ''}">${rationaleHtml(ctx)}</div>${confirmCtl(m, i)}</div>`;
+        pm: b.pm, pmod: b.pmod, pAI: b.pAI, pbase: b.pbase, pf: b.pf, ev: b.ev, kelly: b.kelly, adj: b.adj, critic: b.critic, alpha: b.alpha, value: b.value,
+        facts: d && d.facts, lineups: d && d.lineups, players: d && d.key_players, quality: d && d.data_quality, mode: r.mode, prov: r.prov, model: r.model, sources: r.sources, t1: m.team1, t2: m.team2 };
+      h += `<div class="bet ${e.risk}" data-bd="${esc(bkey)}"><div class="bet-top"><b>${esc(betTitle(m, e))}</b>${w ? `<span class="bet-who">→ ${esc(w)}</span>` : ''}<span class="bet-odd">${odd !== undefined && odd !== null ? 'кэф ' + esc(odd) : ''}</span><span class="bet-risk">${RISK[e.risk]}</span></div><div class="bet-why">${esc(b.reason || '')}</div>${probLine(m, e)}${b.value === false ? '<div class="why">ℹ️ Ценности нет: это просто самый разумный вариант</div>' : ''}<div class="tap-hint">Нажмите на ставку: полное обоснование ›</div><div class="bet-detail ${betOpen.has(bkey) ? 'open' : ''}">${rationaleHtml(ctx)}</div>${confirmCtl(m, i)}</div>`;
     });
   } else h += `<div class="log">${esc(r.raw || '')}</div>`;
+  if (d && Array.isArray(d.dropped) && d.dropped.length) h += `<details class="man"><summary>🧐 Критик снял ставки (${d.dropped.length})</summary>${d.dropped.map(b => `<div class="why">• ${esc(b.market)}: ${esc(b.vetoed)}</div>`).join('')}</details>`;
   h += `<div class="ai-foot">Разбор при счёте ${esc(r.score)} в ${clock(r.at)}${r.score !== m.score ? ' · <span class="bad">счёт изменился, пересчитайте</span>' : ''}. ИИ не знает исход матча, это разбор коэффициентов, а не гарантия.</div>${confirmAllCtl(m)}<button class="btn-more" data-act="reanalyze">🔄 Пересчитать</button></div>`;
   return h;
 }
@@ -1485,13 +1722,18 @@ function marketProb(m, key){
   }
   return v(key) > 1 ? inv(key) : null;
 }
-function probLine(m, e){
-  const pr = Number(e.b.prob); if (!pr) return '';
-  const mp = (e.key && e.sub < 0) ? marketProb(m, e.key) : null;
-  if (!mp) return `<div class="why">Оценка ИИ: ${Math.round(pr)}%</div>`;
-  const edge = Math.round(pr - mp * 100), col = edge >= 5 ? 'var(--accent)' : edge <= -5 ? 'var(--red)' : 'var(--muted)';
-  return `<div class="why">Оценка ИИ: <b>${Math.round(pr)}%</b> · рынок: ${Math.round(mp * 100)}% · <span style="color:${col}">${edge >= 5 ? 'есть ценность +' + edge : edge <= -5 ? 'нет ценности ' + edge : 'около рынка (' + (edge >= 0 ? '+' : '') + edge + ')'}</span></div>`;
+function probHtml(b){
+  const pf = b.pf !== undefined && b.pf !== null ? b.pf : (Number(b.prob) ? Number(b.prob) / 100 : null);
+  if (pf === null) return '';
+  const pm = b.pm || b.mkt || null, parts = [];
+  if (pm) parts.push(`рынок ${pct(pm)}`);
+  if (b.pmod) parts.push(`статистика ${pct(b.pmod)}`);
+  if (b.pAI && Math.abs(b.pAI - pf) > 0.004) parts.push(`ИИ ${pct(b.pAI)}`);
+  let ev = b.ev; if ((ev === undefined || ev === null) && Number(b.odd || b.odds) > 1) ev = pf * Number(b.odd || b.odds) - 1;
+  const col = ev >= 0.03 ? 'var(--accent)' : ev <= -0.03 ? 'var(--red)' : 'var(--muted)';
+  return `<div class="why">${parts.length ? parts.join(' · ') + ' → ' : ''}итог <b>${pct(pf)}</b>${ev !== undefined && ev !== null && !isNaN(ev) ? ` · <span style="color:${col}">выгода ${ev >= 0 ? '+' : ''}${Math.round(ev * 100)}%</span>` : ''}${b.kelly > 0.001 ? ` · ставка ≈${(b.kelly * 100).toFixed(1)}% банка` : ''}</div>`;
 }
+const probLine = (m, e) => probHtml(e.b);
 function calibrationHtml(ps){
   const xs = ps.filter(p => p.prob && (p.state === 'won' || p.state === 'lost'));
   if (xs.length < 5) return '';
@@ -1503,19 +1745,32 @@ function calibrationHtml(ps){
   return `<div class="bd"><b>Честность вероятностей ИИ</b>${rows}<div class="hint" style="text-align:left">Если «сбылось» заметно ниже заявленного, ИИ слишком самоуверен.</div></div>`;
 }
 const betOpen = new Set();
+const MODE_LBL = { math: '📐 Только математика (без ИИ)', quick: '⚡ Быстрый анализ', deep: '🧠 Глубокий анализ (разведка в интернете)', max: '🏆 Максимум (разведка, два расчёта, критик)' };
+const modeLabel = m => MODE_LBL[m] || (m ? String(m) : '');
 function rationaleHtml(c){
   const nl = t => esc(t).replace(/\n/g, '<br>');
   let h = `<div class="bd-h">📖 Полное обоснование: ${esc(c.title || '')}${c.who ? ' → ' + esc(c.who) : ''}</div>`;
-  const diff = c.prob && c.mkt ? Math.round(c.prob - c.mkt * 100) : null;
-  const pr = c.prob ? `Оценка ИИ ${Math.round(c.prob)}%` + (c.mkt ? ` против ${Math.round(c.mkt * 100)}% у рынка (${diff >= 0 ? '+' : ''}${diff} п.п.)` : '') : '';
-  const meta = [pr, c.odd ? 'кэф ' + c.odd : '', c.risk ? (RISK[c.risk] || '') : ''].filter(Boolean).join(' · ');
+  const meta = [c.odd ? 'кэф ' + c.odd : '', c.risk ? (RISK[c.risk] || '') : ''].filter(Boolean).join(' · ');
   if (meta) h += `<div>${esc(meta)}</div>`;
+  const pf = c.pf || (c.prob ? c.prob / 100 : null);
+  if (pf){
+    const L = [];
+    if (c.pm || c.mkt) L.push(`Рынок без маржи букмекера: ${pct(c.pm || c.mkt)}`);
+    if (c.pmod) L.push(`По статистике архива Фонбета: ${pct(c.pmod)}`);
+    if (c.pbase && Math.abs(c.pbase - (c.pm || 0)) > 0.004) L.push(`Модель (рынок + статистика): ${pct(c.pbase)}`);
+    (c.adj || []).forEach(a => { if (a && a.factor) L.push(`Поправка ${Number(a.pp) >= 0 ? '+' : ''}${a.pp} п.п.: ${a.factor}`); });
+    if (c.pAI) L.push(`Оценка ИИ${c.critic ? ' с учётом критика' : ''}: ${pct(c.pAI)}`);
+    if (c.pAI && c.pbase && c.alpha !== undefined) L.push(`Мнению ИИ программа доверяет на ${Math.round(c.alpha * 100)}% (доля подбирается по прошлым итогам)`);
+    L.push(`Итог: ${pct(pf)}${c.ev !== undefined && c.ev !== null ? `; выгода при кэф ${c.odd}: ${c.ev >= 0 ? '+' : ''}${Math.round(c.ev * 100)}%` : ''}${c.kelly > 0.001 ? `; разумная ставка ≈${(c.kelly * 100).toFixed(1)}% банка (четверть Келли)` : ''}`);
+    h += `<div class="bd-h">Как посчитана вероятность</div>` + L.map(x => `<div>• ${esc(x)}</div>`).join('');
+    if (c.critic) h += `<div>🧐 Критик: ${esc(c.critic)}</div>`;
+  }
   h += `<div class="bd-h">Почему именно эта ставка</div><div>${nl(c.detail || c.reason || '')}${c.detail ? '' : '<br><span style="color:var(--muted)">Развёрнутого обоснования нет: оно выключено в ⚙️ или разбор сделан без него.</span>'}</div>`;
   if (c.lineups && (c.lineups.team1 || c.lineups.team2)) h += `<div class="bd-h">Составы и игроки${c.lineups.confirmed === true ? ' (составы подтверждены)' : c.lineups.confirmed === false ? ' (составы не подтверждены)' : ''}</div>` + [[c.t1, c.lineups.team1], [c.t2, c.lineups.team2]].filter(x => x[1]).map(x => `<div><b>${esc(x[0])}:</b> ${nl(x[1])}</div>`).join('');
   if (Array.isArray(c.players) && c.players.length) h += `<div class="bd-h">Ключевые игроки</div>` + c.players.slice(0, 16).map(pl => `<div>• ${esc(String(pl.team || ''))} · <b>${esc(String(pl.player || ''))}</b> — ${esc(String(pl.status || ''))}${pl.impact ? ': ' + esc(String(pl.impact)) : ''}</div>`).join('');
   if (Array.isArray(c.facts) && c.facts.length) h += `<div class="bd-h">Факты, которые учтены</div>` + c.facts.slice(0, 8).map(f => '<div>• ' + esc(f) + '</div>').join('');
   const q = { high:'высокое', medium:'среднее', low:'низкое' }[c.quality] || c.quality;
-  h += `<div class="tap-hint" style="margin-top:8px">${c.mode === 'deep' ? '🧠 Глубокий анализ (с поиском в интернете)' : '⚡ Быстрый анализ'}${q ? ' · качество данных: ' + esc(q) : ''}</div>`;
+  h += `<div class="tap-hint" style="margin-top:8px">${esc(modeLabel(c.mode))}${c.prov ? ' · ' + esc(aiName(c.prov)) + (c.model ? ' (' + esc(c.model) + ')' : '') : ''}${q ? ' · качество данных: ' + esc(q) : ''}</div>`;
   const src = (c.sources || []).filter(x => x && /^https?:/.test(x.uri));
   if (src.length) h += src.map(x => `<div class="tap-hint"><a href="${esc(x.uri)}" target="_blank" rel="noopener" style="color:var(--blue)">${esc(x.title || x.uri)}</a></div>`).join('');
   return h;
@@ -1526,70 +1781,828 @@ function toggleBetDetail(bt){
   dv.classList.toggle('open', betOpen.has(k));
 }
 function factsHtml(r, d){
-  const mode = r.mode === 'deep' ? '🧠 Глубокий анализ (с поиском в интернете)' : '⚡ Быстрый анализ' + (r.fellBack ? ' (глубокий не получился: ' + (r.fbWhy || 'лимит или модель не поддерживает поиск') + ')' : '');
   const q = d && d.data_quality ? ' · качество данных: ' + ({ high:'высокое', medium:'среднее', low:'низкое' }[d.data_quality] || d.data_quality) : '';
-  let h = `<div class="ai-foot" style="margin:0 0 4px">${esc(mode + q)}</div>`;
+  const who = r.prov ? ` · ${aiName(r.prov)}${r.model ? ' (' + r.model + ')' : ''}` : '';
+  let h = `<div class="ai-foot" style="margin:0 0 4px">${esc(modeLabel(r.mode) + who + q)}${r.scoutAt ? ` · разведка ${clock(r.scoutAt).slice(0, 5)}${r.scoutCached ? ' (из кэша)' : ''}` : ''}</div>`;
+  if (Array.isArray(r.notes) && r.notes.length) h += `<div class="hx-n">${r.notes.map(esc).join('<br>')}</div>`;
+  if (r.critic && r.critic.notes) h += `<div class="why">🧐 Критик: ${esc(r.critic.notes)}</div>`;
   if (d && Array.isArray(d.facts) && d.facts.length) h += `<div class="why" style="margin:4px 0 8px"><b>Что учтено:</b><br>` + d.facts.slice(0, 8).map(f => '• ' + esc(f)).join('<br>') + `</div>`;
+  const c = r.ctx || {}, parts = [c.model, c.move, c.weather].filter(Boolean);
+  if (parts.length || c.afb) h += `<details class="man"><summary>📐 Модель, движение линии${c.weather ? ', погода' : ''}${c.afb ? ', API-Football' : ''}</summary>${parts.map(x => `<div class="why">${esc(x)}</div>`).join('')}${c.afb ? `<div class="why">${esc(c.afb).replace(/\n/g, '<br>')}</div>` : ''}</details>`;
   if (d && d.lineups && (d.lineups.team1 || d.lineups.team2)) h += `<details class="man"><summary>👥 Составы и игроки${d.lineups.confirmed === true ? ' (подтверждены)' : d.lineups.confirmed === false ? ' (не подтверждены)' : ''}</summary>` + [d.lineups.team1, d.lineups.team2].filter(Boolean).map(t => `<div class="why">${esc(String(t))}</div>`).join('') + (Array.isArray(d.key_players) ? d.key_players.slice(0, 14).map(pl => `<div class="why">• ${esc(String(pl.team || ''))} · <b>${esc(String(pl.player || ''))}</b>: ${esc(String(pl.status || ''))}${pl.impact ? ', ' + esc(String(pl.impact)) : ''}</div>`).join('') : '') + `</details>`;
+  const S = r.scout;
+  if (S && Array.isArray(S.absences) && S.absences.length) h += `<details class="man"><summary>🚑 Кто не сыграет (${S.absences.length})</summary>${S.absences.slice(0, 16).map(x => `<div class="why">• ${esc(String(x.team || ''))}: <b>${esc(String(x.player || ''))}</b>${x.role ? ' (' + esc(String(x.role)) + ')' : ''} — ${esc(String(x.status || ''))}${x.why ? ', ' + esc(String(x.why)) : ''}${x.importance ? ' · важность ' + esc(String(x.importance)) + '/5' : ''}</div>`).join('')}</details>`;
+  if (S && (S.motivation || S.schedule || S.venue || S.referee)){
+    const V = S.venue || {}, rows = [];
+    if (V.stadium || V.city) rows.push(`Место: ${[V.stadium, V.city, V.country].filter(Boolean).join(', ')}${V.surface ? ', покрытие: ' + V.surface : ''}${V.indoor ? ', в помещении' : ''}${V.neutral ? ', нейтральное поле' : ''}${V.altitude_m ? ', высота ' + V.altitude_m + ' м' : ''}`);
+    if (S.motivation) rows.push(`Мотивация: ${[S.motivation.team1, S.motivation.team2].filter(Boolean).join(' / ')}`);
+    if (S.schedule) rows.push(`Календарь и отдых: ${[S.schedule.team1, S.schedule.team2].filter(Boolean).join(' / ')}`);
+    if (S.referee && S.referee.name) rows.push(`Судья: ${S.referee.name}${S.referee.note ? ' (' + S.referee.note + ')' : ''}`);
+    if (S.standings) rows.push(`Таблица: ${S.standings}`);
+    if (rows.length) h += `<details class="man"><summary>🏟 Место, мотивация, календарь</summary>${rows.map(x => `<div class="why">${esc(x)}</div>`).join('')}</details>`;
+  }
   const src = (r.sources || []).filter(x => x && /^https?:/.test(x.uri));
   if (src.length) h += `<details class="man"><summary>Источники (${src.length})</summary>` + src.map(x => `<div><a href="${esc(x.uri)}" target="_blank" rel="noopener" style="color:var(--blue)">${esc(x.title || x.uri)}</a></div>`).join('') + `</details>`;
+  if (d && d.no_bet_reason) h += `<div class="why">ℹ️ ${esc(d.no_bet_reason)}</div>`;
   return h;
 }
-
 /* ----- запрос к ИИ: максимум данных о матче и командах ----- */
 let lastGrounding = [];
-function buildAnalysisPrompt(m, deep, withDetail){
-  const subs = m.subs.filter(sb => Object.keys(sb.odds).length).map(sb => `${sb.name}: ${JSON.stringify(sb.odds)}${sb.score ? '; текущий счёт этого рынка ' + sb.score : ''}`).join('\n');
-  const log = (matchLog[m.id] || []).map(l => `${clock(l.t)} ${l.text}`).join('\n');
-  const probs = Object.keys(m.odds).slice(0, 16).map(k => { const p = marketProb(m, k); return p ? `${k} ${Math.round(p * 100)}%` : ''; }).filter(Boolean).join(', ');
-  const fmt = (name, f) => f ? `${name}: последние ${f.n} матчей, которые видело приложение: В${f.w} Н${f.d} П${f.l}, забито ${f.gf}, пропущено ${f.ga}. ${f.seq.join('; ')}` : `${name}: в базе приложения пока нет матчей`;
-  const hh = headToHead(m.team1, m.team2, m.sportKey, m.id), rec = trackRecordText();
-  const live = m.info ? JSON.stringify(m.info).slice(0, 600) : '';
-  return `Ты опытный аналитик спортивных ставок. Проанализируй матч как можно глубже.
-Матч: ${m.team1} — ${m.team2}
-Турнир: ${m.league}. Спорт: ${m.sport}.
-Статус: ${m.status}; счёт ${m.score} (${fmtTimer(m, true)}); начало: ${fmtStart(m)}
-Коэффициенты: ${JSON.stringify(m.odds)}
-Вероятности рынка без маржи букмекера: ${probs || 'нет'}
-${subs ? 'Доп. рынки:\n' + subs + '\n' : ''}${live ? 'Данные live от Fonbet: ' + live + '\n' : ''}${log ? 'События матча по ходу:\n' + log + '\n' : ''}
-ДАННЫЕ ПРИЛОЖЕНИЯ (из матчей, которые приложение видело само):
-${fmt(m.team1, teamForm(m.team1, m.sportKey, m.id))}
-${fmt(m.team2, teamForm(m.team2, m.sportKey, m.id))}
-Очные встречи в базе приложения: ${hh.length ? hh.join('; ') : 'нет данных'}
-${rec ? 'Точность прошлых прогнозов этого приложения (не завышай уверенность): ' + rec + '\n' : ''}
-${deep ? `СНАЧАЛА найди в интернете (Google) и учти:
-1) ожидаемые или подтверждённые стартовые составы обеих команд: КТО ИМЕННО выйдет на поле в этом матче (в одной команде в разных матчах играют разные люди, для молодёжных, женских и резервных составов это особенно важно);
-2) ключевых игроков каждой команды и их текущую форму (голы, передачи, минуты в последних матчах), вратарей и исполнителей стандартов;
-3) кто не сыграет: травмы, дисквалификации, ротация, усталость от календаря;
-4) чем состав отличается от прошлых матчей и как это меняет силу команды;
-5) последние 5-10 матчей каждой команды, очные встречи, турнирное положение, мотивацию, стиль игры.
-Если матч уже идёт, учти счёт, минуту и ход игры. Используй только найденные факты, ничего не выдумывай; если составы неизвестны, так и напиши (confirmed:false) и снизь data_quality.
-` : ''}
-Ответь ТОЛЬКО JSON без пояснений: {"summary":"2-3 предложения: главный вывод и почему","facts":["до 6 ключевых фактов с цифрами, которые ты учёл"],"data_quality":"high|medium|low"${deep ? `,"lineups":{"team1":"кто выйдет и кто не сыграет за ${m.team1} и как это влияет","team2":"то же за ${m.team2}","confirmed":true или false},"key_players":[{"team":"название команды","player":"имя","status":"играет|под вопросом|не играет","impact":"чем важен для матча"}]` : ''},"bets":[{"market":"П1 или ТБ(2.5) из основных коэффициентов; для доп. рынка формат: название рынка из списка доп. рынков, двоеточие, ставка (например желтые карты: П1), название рынка без счёта в скобках","odds":число,"prob":число от 1 до 99,"risk":"low|medium|high","reason":"1-2 предложения"${withDetail ? `,"detail":"полное обоснование на 6-10 предложений: 1) главные аргументы с цифрами; 2) влияние составов и конкретных игроков; 3) форма и очные встречи; 4) почему вероятность именно такая и чем она отличается от рынка; 5) главные риски и при каких условиях ставка не зайдёт; 6) итог"` : ''}}]}.
-Правила: дай от 1 до 3 ставок. prob — твоя честная оценка вероятности в процентах: сравни её с вероятностью рынка и выбирай ставки, где у тебя есть преимущество. Если ценности нет, всё равно дай 1 самую разумную ставку и честно напиши об этом в reason. risk: low — надёжная, medium — средний риск, high — рискованная. В reason называй команды по названию, а не П1/П2. Русский язык.`;
+/* ================= Архив итогов Фонбета: статистика команд по их номерам, рейтинг Эло ================= */
+const ARC = { db: null, days: {}, teams: new Map(), comps: new Map(), compNames: {}, count: 0, loaded: false, busy: false, info: '', elo: {}, eloN: {}, avgCache: {} };
+const arcDepth = () => { const v = localStorage.getItem('fb_arc_days'); return v === null ? 30 : Number(v) || 0; };
+function idb(){
+  return new Promise((res, rej) => {
+    if (ARC.db) return res(ARC.db);
+    if (!window.indexedDB) return rej(new Error('браузер не поддерживает IndexedDB'));
+    const rq = indexedDB.open('fbArchive', 1);
+    rq.onupgradeneeded = () => { if (!rq.result.objectStoreNames.contains('days')) rq.result.createObjectStore('days', { keyPath: 'date' }); };
+    rq.onsuccess = () => { ARC.db = rq.result; res(ARC.db); };
+    rq.onerror = () => rej(rq.error || new Error('IndexedDB недоступна'));
+  });
+}
+const idbAll = () => idb().then(db => new Promise((res, rej) => { const rq = db.transaction('days').objectStore('days').getAll(); rq.onsuccess = () => res(rq.result || []); rq.onerror = () => rej(rq.error); }));
+const idbPut = rec => idb().then(db => new Promise((res, rej) => { const tx = db.transaction('days', 'readwrite'); tx.objectStore('days').put(rec); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }));
+const idbDel = date => idb().then(db => new Promise(res => { const tx = db.transaction('days', 'readwrite'); tx.objectStore('days').delete(date); tx.oncomplete = () => res(); tx.onerror = () => res(); }));
+/* сжатый день: только то, что нужно для статистики */
+function compactDay(j, date){
+  const sp = {}; (j.sports || []).forEach(s => { sp[String(s.id)] = s.name; });
+  const comp = {}; (j.competitions || []).forEach(c => { comp[String(c.id)] = { n: c.name || '', s: sp[String(c.sportId)] || '' }; });
+  const mi = new Map((j.eventMiscs || []).map(m => [String(m.id), m]));
+  const kids = {};
+  (j.events || []).forEach(ev => {
+    if (!ev.parentId || !ev.name) return;
+    const m = mi.get(String(ev.id)); if (!m || m.score1 === undefined) return;
+    (kids[String(ev.parentId)] = kids[String(ev.parentId)] || {})[ev.name] = [Number(m.score1), Number(m.score2)];
+  });
+  const rows = [], comps = {};
+  (j.events || []).forEach(ev => {
+    if (ev.parentId || !ev.team1Id || String(ev.team1Id) === '0' || !ev.team2Id || ev.status === 4) return;
+    const m = mi.get(String(ev.id)); if (!m || m.score1 === undefined) return;
+    const c = comp[String(ev.competitionId)] || { n: '', s: '' };
+    comps[String(ev.competitionId)] = c.n;
+    const r = { i: String(ev.id), s: sportGroup(c.s, c.n).key, c: String(ev.competitionId), t: Number(ev.startTime) || 0, h: String(ev.team1Id), a: String(ev.team2Id), hn: ev.team1 || '', an: ev.team2 || '', x: Number(m.score1), y: Number(m.score2) };
+    if (Array.isArray(m.subScores) && m.subScores.length){ r.p = m.subScores.map(q => [Number(q.score1), Number(q.score2)]); r.pt = String(m.subScores[0].title || ''); }
+    if (m.firstGoal && m.firstGoal.team) r.fg = [Number(m.firstGoal.team), Number(m.firstGoal.minute) || 0];
+    if (kids[r.i]) r.e = kids[r.i];
+    rows.push(r);
+  });
+  return { date, at: Date.now(), rows, comps };
+}
+function buildArchiveIndex(){
+  const teams = new Map(), comps = new Map(), seen = new Set(); let count = 0;
+  Object.keys(ARC.days).sort().forEach(d => {
+    const D = ARC.days[d]; Object.assign(ARC.compNames, D.comps || {});
+    (D.rows || []).forEach(r => {
+      if (seen.has(r.i)) return; seen.add(r.i); count++;
+      [r.h, r.a].forEach(t => { let a = teams.get(t); if (!a) teams.set(t, a = []); a.push(r); });
+      let c = comps.get(r.c); if (!c) comps.set(r.c, c = []); c.push(r);
+    });
+  });
+  teams.forEach(a => a.sort((x, y) => x.t - y.t));
+  ARC.teams = teams; ARC.comps = comps; ARC.count = count; ARC.avgCache = {};
+  computeElo();
+}
+function computeElo(){
+  const rows = []; ARC.comps.forEach(a => a.forEach(r => rows.push(r)));
+  rows.sort((a, b) => a.t - b.t);
+  const R = {}, N = {};
+  rows.forEach(r => {
+    const K = r.s === 'football' ? 24 : r.s === 'hockey' ? 20 : r.s === 'basket' ? 18 : 28;
+    const H = r.s === 'football' ? 50 : r.s === 'hockey' ? 30 : r.s === 'basket' ? 60 : 0;
+    const ra = R[r.h] || 1500, rb = R[r.a] || 1500;
+    const e = 1 / (1 + Math.pow(10, (rb - ra - H) / 400)), s = r.x > r.y ? 1 : r.x < r.y ? 0 : 0.5;
+    const gd = Math.abs(r.x - r.y), mult = (r.s === 'football' || r.s === 'hockey') ? (gd <= 1 ? 1 : gd === 2 ? 1.5 : (11 + gd) / 8) : 1;
+    const d = K * mult * (s - e);
+    R[r.h] = ra + d; R[r.a] = rb - d; N[r.h] = (N[r.h] || 0) + 1; N[r.a] = (N[r.a] || 0) + 1;
+  });
+  ARC.elo = R; ARC.eloN = N;
+}
+async function archiveSync(){
+  if (ARC.busy) return;
+  const depth = arcDepth();
+  if (!depth){ ARC.info = '📚 Архив Фонбета выключен в ⚙️'; return; }
+  ARC.busy = true;
+  try {
+    if (!ARC.loaded){ const all = await idbAll(); all.forEach(d => { ARC.days[d.date] = d; }); ARC.loaded = true; buildArchiveIndex(); }
+    const want = []; for (let k = 0; k <= depth; k++) want.push(mskDate(Date.now() - k * 864e5));
+    const oldest = want[want.length - 1];
+    Object.keys(ARC.days).forEach(d => { if (d < oldest){ delete ARC.days[d]; idbDel(d); } });
+    const todo = want.filter(d => { const D = ARC.days[d]; return !D || (!D.final && Date.now() - D.at > 30 * 60e3); });
+    let n = 0, err = '';
+    for (const d of todo){
+      try {
+        const j = await fetchResultsDay(d);
+        const rec = compactDay(j, d);
+        rec.final = Date.now() - Date.parse(d + 'T21:00:00Z') > 12 * 3600e3;
+        ARC.days[d] = rec; await idbPut(rec); n++;
+        ARC.info = `📚 Архив Фонбета: загружаю… ${Object.keys(ARC.days).length} из ${depth + 1} дней`;
+        if (n % 4 === 0) buildArchiveIndex();
+      } catch (e){ err = e.message; if (!n) break; }
+      await new Promise(r => setTimeout(r, 1200));
+    }
+    if (n) buildArchiveIndex();
+    ARC.info = `📚 Архив Фонбета: ${Object.keys(ARC.days).length} из ${depth + 1} дней, матчей ${ARC.count}, команд и игроков ${ARC.teams.size}` + (err ? ` · ошибка загрузки: ${err}` : '');
+  } catch (e){ ARC.info = '📚 Архив Фонбета недоступен: ' + e.message; }
+  finally { ARC.busy = false; const el = $('arcInfo'); if (el) el.textContent = ARC.info; }
+}
+/* средние голы/очки хозяев и гостей в турнире (или по виду спорта, если матчей мало) */
+function compAvg(cid, sk){
+  const key = cid + '|' + sk; if (ARC.avgCache[key]) return ARC.avgCache[key];
+  let rows = ARC.comps.get(String(cid)) || [];
+  if (rows.length < 25){ rows = []; ARC.comps.forEach(a => { if (a[0] && a[0].s === sk) a.forEach(r => rows.push(r)); }); }
+  if (!rows.length) return null;
+  const h = rows.reduce((s, r) => s + r.x, 0) / rows.length, a = rows.reduce((s, r) => s + r.y, 0) / rows.length;
+  return (ARC.avgCache[key] = { h, a, n: rows.length });
+}
+function teamStats(tid, before, nMax){
+  const all = ARC.teams.get(String(tid)); if (!all || !all.length) return null;
+  const prior = all.filter(r => r.t < before - 60), rows = prior.slice(-(nMax || 10));
+  if (!rows.length) return null;
+  const S = { n: rows.length, w: 0, d: 0, l: 0, gf: 0, ga: 0, home: { n: 0, gf: 0, ga: 0, w: 0 }, away: { n: 0, gf: 0, ga: 0, w: 0 }, btts: 0, p1: { n: 0, f: 0, a: 0 }, fg: { n: 0, f: 0, min: 0 }, seq: [], ext: {}, last: rows[rows.length - 1].t, comp: '', tot: [] };
+  const cc = {}, id = String(tid);
+  rows.forEach(r => {
+    const home = r.h === id, gf = home ? r.x : r.y, ga = home ? r.y : r.x;
+    S.gf += gf; S.ga += ga; S.tot.push(gf + ga);
+    if (gf > ga) S.w++; else if (gf === ga) S.d++; else S.l++;
+    const side = home ? S.home : S.away; side.n++; side.gf += gf; side.ga += ga; if (gf > ga) side.w++;
+    if (gf > 0 && ga > 0) S.btts++;
+    if (r.p && r.p[0]){ S.p1.n++; S.p1.f += home ? r.p[0][0] : r.p[0][1]; S.p1.a += home ? r.p[0][1] : r.p[0][0]; }
+    if (r.fg){ S.fg.n++; if ((r.fg[0] === 1) === home) S.fg.f++; S.fg.min += r.fg[1]; }
+    if (r.e) Object.entries(r.e).forEach(([k, v]) => { const o = S.ext[k] || (S.ext[k] = { n: 0, f: 0, a: 0 }); o.n++; o.f += home ? v[0] : v[1]; o.a += home ? v[1] : v[0]; });
+    cc[r.c] = (cc[r.c] || 0) + 1;
+    S.seq.push(`${gf > ga ? 'В' : gf === ga ? 'Н' : 'П'} ${gf}:${ga} ${home ? 'дома' : 'в гостях'} — ${home ? r.an : r.hn} (${new Date(r.t * 1000).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })})`);
+  });
+  S.comp = Object.entries(cc).sort((x, y) => y[1] - x[1])[0][0];
+  S.restDays = (before - S.last) / 86400;
+  S.last7 = prior.filter(r => r.t > before - 7 * 86400).length;
+  S.elo = ARC.elo[id] || null; S.eloN = ARC.eloN[id] || 0;
+  return S;
+}
+function h2hIds(t1, t2, before){
+  const a = ARC.teams.get(String(t1)) || [], x = String(t1), y = String(t2);
+  return a.filter(r => r.t < before - 60 && ((r.h === x && r.a === y) || (r.h === y && r.a === x))).slice(-6).reverse();
+}
+const r1 = v => Math.round(v * 10) / 10;
+function statsText(name, S, sk){
+  if (!S) return `${name}: в архиве Фонбета матчей нет`;
+  const u = sk === 'basket' ? 'очков' : sk === 'tennis' || sk === 'tt' || sk === 'volley' ? 'сетов' : 'голов';
+  let t = `${name}: последние ${S.n} матчей (архив Фонбета): В${S.w} Н${S.d} П${S.l}; в среднем забивает ${r1(S.gf / S.n)} и пропускает ${r1(S.ga / S.n)} ${u}`;
+  if (S.home.n) t += `; дома ${S.home.n} матч.: ${r1(S.home.gf / S.home.n)}–${r1(S.home.ga / S.home.n)}`;
+  if (S.away.n) t += `; в гостях ${S.away.n} матч.: ${r1(S.away.gf / S.away.n)}–${r1(S.away.ga / S.away.n)}`;
+  if (sk === 'football' || sk === 'hockey'){
+    t += `; обе забили в ${Math.round(S.btts / S.n * 100)}%`;
+    if (S.p1.n) t += `; 1-й ${sk === 'hockey' ? 'период' : 'тайм'} в среднем ${r1(S.p1.f / S.p1.n)}–${r1(S.p1.a / S.p1.n)}`;
+    if (S.fg.n) t += `; забивает первой в ${Math.round(S.fg.f / S.fg.n * 100)}% матчей с голами, первый гол в среднем на ${Math.round(S.fg.min / S.fg.n)}-й мин`;
+  }
+  const ex = Object.entries(S.ext).filter(([, o]) => o.n >= 2).slice(0, 4).map(([k, o]) => `${k}: ${r1(o.f / o.n)}–${r1(o.a / o.n)} (${o.n} матч.)`);
+  if (ex.length) t += `; ${ex.join('; ')}`;
+  t += `; отдых перед матчем ${r1(S.restDays)} дн., матчей за 7 дней: ${S.last7}`;
+  if (S.elo) t += `; рейтинг Эло ${Math.round(S.elo)} (по ${S.eloN} матчам)`;
+  t += `.\n   Последние: ${S.seq.slice(-6).reverse().join('; ')}`;
+  return t;
 }
 
+/* ================= Движение линии: первый увиденный коэффициент и коэффициент перед стартом ================= */
+let openOdds = (() => { try { return JSON.parse(localStorage.getItem('fb_open') || '{}'); } catch (e){ return {}; } })(), openTimer = null;
+function trackOpenOdds(fresh){
+  let ch = false; const now = Date.now();
+  fresh.forEach(m => {
+    const id = String(m.id), ks = Object.keys(m.odds); if (!ks.length || openOdds[id]) return;
+    const o = {}; ks.filter(k => /^(П1|X|П2|1X|X2|12|ТБ\(|ТМ\(|Ф1\(|Ф2\()/.test(k)).slice(0, 24).forEach(k => { o[k] = Number(m.odds[k]); });
+    openOdds[id] = { t: now, live: m.status === 'live' ? 1 : 0, o }; ch = true;
+  });
+  if (!ch) return;
+  clearTimeout(openTimer);
+  openTimer = setTimeout(() => {
+    const lim = Date.now() - 4 * 864e5; Object.keys(openOdds).forEach(k => { if (openOdds[k].t < lim) delete openOdds[k]; });
+    const ks = Object.keys(openOdds); if (ks.length > 6000) ks.sort((a, b) => openOdds[a].t - openOdds[b].t).slice(0, ks.length - 6000).forEach(k => delete openOdds[k]);
+    try { localStorage.setItem('fb_open', JSON.stringify(openOdds)); } catch (e){}
+  }, 3000);
+}
+function moveList(m){
+  const O = openOdds[String(m.id)]; if (!O) return [];
+  return Object.keys(O.o).map(k => { const a = O.o[k], b = Number(m.odds[k]); if (!(a > 1 && b > 1)) return null; const ch = (b - a) / a; return Math.abs(ch) >= 0.03 ? { k, a, b, ch } : null; }).filter(Boolean)
+    .sort((x, y) => Math.abs(y.ch) - Math.abs(x.ch));
+}
+function movementText(m){
+  const O = openOdds[String(m.id)], L = moveList(m); if (!O) return '';
+  if (!L.length) return `Движение линии: с ${clock(O.t).slice(0, 5)} (когда приложение впервые увидело матч${O.live ? ' в лайве' : ''}) коэффициенты почти не менялись.`;
+  return `Движение линии с ${clock(O.t).slice(0, 5)}${O.live ? ' (в лайве)' : ''}: ` + L.slice(0, 8).map(x => `${x.k} ${x.a}→${x.b} (${x.ch > 0 ? '+' : ''}${Math.round(x.ch * 100)}%)`).join(', ') + '. Падение коэффициента = в этот исход шли деньги.';
+}
+
+/* ================= Математические модели: вероятность каждого рынка, смесь с рынком, выгода ================= */
+const POI = (() => { const t = []; for (let k = 0; k <= 90; k++){ const l = 0.05 * (k + 1), a = [Math.exp(-l)]; for (let i = 1; i <= 12; i++) a.push(a[i - 1] * l / i); t.push(a); } return t; })();
+function poisArr(l){
+  if (!(l > 0)) l = 0.001;
+  const a = [Math.exp(-l)]; for (let i = 1; i <= 12; i++) a.push(a[i - 1] * l / i); return a;
+}
+function erf(x){ const s = Math.sign(x); x = Math.abs(x); const t = 1 / (1 + 0.3275911 * x); const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x); return s * y; }
+const Phi = z => 0.5 * (1 + erf(z / Math.SQRT2));
+function invPhi(p){ p = Math.min(0.999, Math.max(0.001, p)); let lo = -6, hi = 6; for (let i = 0; i < 60; i++){ const mid = (lo + hi) / 2; if (Phi(mid) < p) lo = mid; else hi = mid; } return (lo + hi) / 2; }
+const logit = p => Math.log(p / (1 - p)), sigm = x => 1 / (1 + Math.exp(-x));
+const parseLine = s => parseFloat(String(s).replace(',', '.'));
+/* исход ставки по итоговому счёту: 1 — выигрыш, 0.5 — половина (четвертные линии), 0 — возврат учтён отдельно */
+function outcome(key, a, b){
+  if (key === 'П1') return [a > b ? 1 : 0, 0]; if (key === 'П2') return [b > a ? 1 : 0, 0]; if (key === 'X') return [a === b ? 1 : 0, 0];
+  if (key === '1X') return [a >= b ? 1 : 0, 0]; if (key === 'X2') return [b >= a ? 1 : 0, 0]; if (key === '12') return [a !== b ? 1 : 0, 0];
+  const mm = String(key).match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/); if (!mm) return null;
+  const p0 = parseLine(mm[2]); if (isNaN(p0)) return null;
+  const lines = ((p0 * 4) % 2 !== 0) ? [p0 - 0.25, p0 + 0.25] : [p0];
+  let w = 0, v = 0;
+  lines.forEach(l => { const d = mm[1] === 'Ф1' ? a + l - b : mm[1] === 'Ф2' ? b + l - a : mm[1] === 'ТБ' ? a + b - l : l - (a + b); if (d > 1e-9) w += 1 / lines.length; else if (Math.abs(d) < 1e-9) v += 1 / lines.length; });
+  return [w, v];
+}
+/* вероятность (выигрыш, возврат) по распределению оставшихся голов + текущий счёт */
+function poisProb(key, ph, pa, a0, b0){
+  let win = 0, push = 0;
+  for (let i = 0; i < ph.length; i++) for (let j = 0; j < pa.length; j++){
+    const o = outcome(key, a0 + i, b0 + j); if (!o) return null;
+    const p = ph[i] * pa[j]; win += p * o[0]; push += p * o[1];
+  }
+  return { win, push };
+}
+function devig2(u, d){ return (1 / u) / (1 / u + 1 / d); }
+function mainTotal(odds){
+  let best = null;
+  Object.keys(odds).forEach(k => {
+    const mm = k.match(/^ТБ\((.*)\)$/); if (!mm) return;
+    const u = Number(odds[k]), d = Number(odds[`ТМ(${mm[1]})`]); if (!(u > 1 && d > 1)) return;
+    const l = parseLine(mm[1]); if (isNaN(l) || (l * 4) % 2 !== 0) return;
+    const diff = Math.abs(u - d); if (!best || diff < best.diff) best = { line: l, key: k, pOver: devig2(u, d), diff };
+  });
+  return best;
+}
+function mainHcap(odds){
+  let best = null;
+  Object.keys(odds).forEach(k => {
+    const mm = k.match(/^Ф1\((.*)\)$/); if (!mm) return;
+    const h = parseLine(mm[1]); if (isNaN(h) || (h * 4) % 2 !== 0) return;
+    const other = Object.keys(odds).find(x => /^Ф2\(/.test(x) && parseLine(x.slice(3, -1)) === -h); if (!other) return;
+    const u = Number(odds[k]), d = Number(odds[other]); if (!(u > 1 && d > 1)) return;
+    const diff = Math.abs(u - d); if (!best || diff < best.diff) best = { h, p: devig2(u, d), diff };
+  });
+  return best;
+}
+/* подбор средних голов команд под коэффициенты рынка (П1/X/П2 и основной тотал) */
+function fitPoissonMarket(odds, a0, b0){
+  const v = k => Number(odds[k]);
+  const has3 = v('П1') > 1 && v('X') > 1 && v('П2') > 1;
+  const T = mainTotal(odds);
+  if (!has3 && !T) return null;
+  let p1, px, p2;
+  if (has3){ const s = 1 / v('П1') + 1 / v('X') + 1 / v('П2'); p1 = 1 / v('П1') / s; px = 1 / v('X') / s; p2 = 1 / v('П2') / s; }
+  let best = null;
+  for (let ih = 0; ih < POI.length; ih++) for (let ia = 0; ia < POI.length; ia++){
+    const ph = POI[ih], pa = POI[ia];
+    let q1 = 0, qx = 0, q2 = 0, qo = 0;
+    for (let i = 0; i < ph.length; i++) for (let j = 0; j < pa.length; j++){
+      const p = ph[i] * pa[j], a = a0 + i, b = b0 + j;
+      if (a > b) q1 += p; else if (a === b) qx += p; else q2 += p;
+      if (T && a + b > T.line) qo += p;
+    }
+    let err = 0;
+    if (has3) err += (q1 - p1) ** 2 + (qx - px) ** 2 + (q2 - p2) ** 2;
+    if (T) err += 1.5 * (qo - T.pOver) ** 2;
+    if (!best || err < best.err) best = { err, lh: 0.05 * (ih + 1), la: 0.05 * (ia + 1) };
+  }
+  return best;
+}
+function elapsedMin(m){
+  if (m.status !== 'live' || m.timerSeconds === null || m.timerSeconds === undefined) return null;
+  const sec = m.timerDir === -1 ? null : Number(m.timerSeconds) + (Date.now() - m.timerAt) / 1000;
+  return sec === null || isNaN(sec) ? null : sec / 60;
+}
+/* сила команд по архиву: средние голы с поправкой на уровень турнира, сжатие к среднему при малой выборке */
+function statLambdas(m){
+  if (!m.t1id || !m.t2id || !ARC.count) return null;
+  const before = m.start || Date.now() / 1000;
+  const A = teamStats(m.t1id, before, 10), B = teamStats(m.t2id, before, 10);
+  if (!A || !B || A.n < 3 || B.n < 3) return { A, B };
+  const avg = compAvg(A.comp, m.sportKey); if (!avg) return { A, B };
+  const base = (avg.h + avg.a) / 2 || 1.3, sh = n => n / (n + 6), f = (x, n) => 1 + (x - 1) * sh(n);
+  const lh = avg.h * f(A.gf / A.n / base, A.n) * f(B.ga / B.n / base, B.n);
+  const la = avg.a * f(B.gf / B.n / base, B.n) * f(A.ga / A.n / base, A.n);
+  return { lh, la, A, B, avg, n: Math.min(A.n, B.n) };
+}
+const modelCache = {};
+/* главная функция: вероятности всех основных рынков матча */
+function modelFor(m){
+  const sig = m.id + '|' + JSON.stringify(m.odds) + '|' + m.score + '|' + ARC.count;
+  const c = modelCache[m.id]; if (c && c.sig === sig && Date.now() - c.at < 20000) return c.res;
+  let res = null;
+  try { res = buildModel(m); } catch (e){ res = null; }
+  modelCache[m.id] = { sig, at: Date.now(), res };
+  return res;
+}
+function buildModel(m){
+  const sk = m.sportKey, keys = Object.keys(m.odds).filter(k => Number(m.odds[k]) > 1);
+  if (!keys.length) return null;
+  const [a0, b0] = String(m.score).split(':').map(x => parseInt(x, 10) || 0);
+  const live = m.status === 'live';
+  const out = { kind: '', probs: {}, notes: [], w: 0, st: null };
+  const add = (k, pm, pmod, p, push) => { out.probs[k] = { pm, pmod, p, push: push || 0 }; };
+  if (sk === 'football' || sk === 'hockey'){
+    const fit = fitPoissonMarket(m.odds, live ? a0 : 0, live ? b0 : 0);
+    if (!fit) return null;
+    const S = statLambdas(m); out.st = S;
+    let lh = fit.lh, la = fit.la, slh = null, sla = null;
+    if (S && S.lh){
+      const full = sk === 'football' ? 94 : 62, el = elapsedMin(m);
+      const rem = live ? (el === null ? null : Math.max(0.02, (full - el) / full)) : 1;
+      if (rem !== null){
+        slh = S.lh * rem; sla = S.la * rem;
+        const w = 0.3 * Math.min(S.n, 10) / 10; out.w = w;
+        lh = Math.exp((1 - w) * Math.log(fit.lh) + w * Math.log(slh)); la = Math.exp((1 - w) * Math.log(fit.la) + w * Math.log(sla));
+      }
+    }
+    out.kind = 'poisson'; out.lam = [lh, la]; out.mlam = [fit.lh, fit.la]; out.slam = slh !== null ? [slh, sla] : null;
+    const ph = poisArr(lh), pa = poisArr(la), sph = slh !== null ? poisArr(slh) : null, spa = slh !== null ? poisArr(sla) : null;
+    keys.forEach(k => {
+      const r = poisProb(k, ph, pa, live ? a0 : 0, live ? b0 : 0); if (!r) return;
+      const s = sph ? poisProb(k, sph, spa, live ? a0 : 0, live ? b0 : 0) : null;
+      add(k, marketProb(m, k), s ? s.win : null, r.win, r.push);
+    });
+    out.notes.push(`Модель Пуассона: ожидаемые ${live ? 'оставшиеся ' : ''}голы ${m.team1} ${r1(lh)}, ${m.team2} ${r1(la)} (по коэффициентам рынка ${r1(fit.lh)}–${r1(fit.la)}${out.slam ? `, по архиву Фонбета ${r1(out.slam[0])}–${r1(out.slam[1])}, вес архива ${Math.round(out.w * 100)}%` : ', архива по командам пока мало'})`);
+    return out;
+  }
+  if (sk === 'basket'){
+    const T = mainTotal(m.odds), H = mainHcap(m.odds);
+    if (!T && !H) return null;
+    const live = m.status === 'live';
+    const tot0 = T ? T.line : null;
+    const sdT = tot0 ? Math.max(6, 0.075 * tot0) : 15, sdM = tot0 ? Math.max(5, 0.055 * tot0) : 12;
+    let muT = T ? T.line + sdT * invPhi(T.pOver) : null;
+    let muM = H ? sdM * invPhi(H.p) - H.h : null;
+    if (muM === null && Number(m.odds['П1']) > 1 && Number(m.odds['П2']) > 1) muM = sdM * invPhi(devig2(Number(m.odds['П1']), Number(m.odds['П2'])));
+    const S = statLambdas(m); out.st = S;
+    if (!live && S && S.lh && muT !== null){
+      const w = 0.25 * Math.min(S.n, 10) / 10; out.w = w;
+      muT = (1 - w) * muT + w * (S.lh + S.la);
+      if (muM !== null) muM = (1 - w) * muM + w * (S.lh - S.la);
+    }
+    out.kind = 'normal'; out.mu = [muT, muM];
+    keys.forEach(k => {
+      const mm = k.match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/); let p = null;
+      if ((k === 'П1' || k === 'П2') && muM !== null){ const pp = Phi(muM / sdM); p = k === 'П1' ? pp : 1 - pp; }
+      else if (mm){
+        const l = parseLine(mm[2]); if (isNaN(l)) return;
+        if ((mm[1] === 'ТБ' || mm[1] === 'ТМ') && muT !== null){ const po = 1 - Phi((l - muT) / sdT); p = mm[1] === 'ТБ' ? po : 1 - po; }
+        if ((mm[1] === 'Ф1' || mm[1] === 'Ф2') && muM !== null){ const z = mm[1] === 'Ф1' ? (muM + l) / sdM : (l - muM) / sdM; p = Phi(z); }
+      }
+      if (p !== null) add(k, marketProb(m, k), null, p, 0);
+    });
+    out.notes.push(`Нормальная модель: ожидаемый тотал ${muT !== null ? Math.round(muT) : '—'}, разница очков в пользу ${m.team1} ${muM !== null ? r1(muM) : '—'}${out.w ? `, вес архива ${Math.round(out.w * 100)}%` : ''}`);
+    return out;
+  }
+  /* два исхода (теннис, настольный теннис, волейбол, киберспорт, единоборства): рейтинг Эло по архиву Фонбета */
+  const u = Number(m.odds['П1']), d = Number(m.odds['П2']);
+  if (!(u > 1 && d > 1) || Number(m.odds['X']) > 1) return null;
+  const pm = devig2(u, d);
+  const ea = ARC.elo[String(m.t1id)], eb = ARC.elo[String(m.t2id)], na = ARC.eloN[String(m.t1id)] || 0, nb = ARC.eloN[String(m.t2id)] || 0;
+  let p = pm, pe = null;
+  if (ea && eb && na >= 3 && nb >= 3 && m.status !== 'live'){
+    pe = 1 / (1 + Math.pow(10, (eb - ea) / 400));
+    const w = 0.35 * Math.min(na, nb, 20) / 20; out.w = w;
+    p = sigm((1 - w) * logit(Math.min(0.99, Math.max(0.01, pm))) + w * logit(Math.min(0.99, Math.max(0.01, pe))));
+  }
+  out.kind = 'elo';
+  add('П1', pm, pe, p, 0); add('П2', 1 - pm, pe === null ? null : 1 - pe, 1 - p, 0);
+  out.notes.push(pe === null ? 'Рейтинг Эло: в архиве мало матчей этих участников, опора на рынок' : `Рейтинг Эло по архиву Фонбета: ${Math.round(ea)} против ${Math.round(eb)} (${na} и ${nb} матчей) → ${Math.round(pe * 100)}% на ${m.team1}, вес рейтинга ${Math.round(out.w * 100)}%`);
+  return out;
+}
+const evOf = (p, push, odd) => p * odd + (push || 0) - 1;
+function kellyOf(p, push, odd){ const b = odd - 1; if (!(b > 0)) return 0; const q = 1 - p - (push || 0); return Math.max(0, Math.min(0.03, (b * p - q) / b * 0.25)); }
+const pct = x => x === null || x === undefined || isNaN(x) ? '—' : Math.round(x * 100) + '%';
+function modelTable(m, limit){
+  const M = modelFor(m); if (!M) return '';
+  const rows = Object.entries(M.probs).map(([k, v]) => ({ k, v, odd: Number(m.odds[k]), ev: evOf(v.p, v.push, Number(m.odds[k])) }))
+    .sort((a, b) => b.ev - a.ev).slice(0, limit || 40);
+  return rows.map(r => `${r.k}: кэф ${r.odd} | рынок без маржи ${pct(r.v.pm)} | по статистике ${pct(r.v.pmod)} | итог модели ${pct(r.v.p)}${r.v.push > 0.005 ? ` (+возврат ${pct(r.v.push)})` : ''} | выгода ${r.ev >= 0 ? '+' : ''}${Math.round(r.ev * 100)}%`).join('\n');
+}
+function riskFrom(p){ return p >= 0.7 ? 'low' : p >= 0.5 ? 'medium' : 'high'; }
+
+/* ================= Сторонние источники: погода (Open-Meteo), API-Football, английские названия с Фонбета ================= */
+const memo = {};
+async function cached(key, ttl, fn){
+  const c = memo[key]; if (c && Date.now() - c.at < ttl) return c.v;
+  const v = await fn(); memo[key] = { at: Date.now(), v }; return v;
+}
+const WCODE = { 0: 'ясно', 1: 'почти ясно', 2: 'переменная облачность', 3: 'пасмурно', 45: 'туман', 48: 'туман', 51: 'морось', 53: 'морось', 55: 'сильная морось', 61: 'небольшой дождь', 63: 'дождь', 65: 'сильный дождь', 66: 'ледяной дождь', 67: 'ледяной дождь', 71: 'небольшой снег', 73: 'снег', 75: 'сильный снег', 77: 'снежная крупа', 80: 'ливень', 81: 'ливень', 82: 'сильный ливень', 85: 'снегопад', 86: 'сильный снегопад', 95: 'гроза', 96: 'гроза с градом', 99: 'гроза с градом' };
+async function weatherFor(city, country, startSec){
+  if (!city) return null;
+  const k = 'w|' + city + '|' + country + '|' + Math.round(startSec / 3600);
+  return cached(k, 3 * 3600e3, async () => {
+    const g = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=5&language=ru&format=json`)).json();
+    let loc = (g.results || [])[0];
+    if (country && g.results) loc = g.results.find(x => normName(x.country) === normName(country) || normName(x.country_code) === normName(country)) || loc;
+    if (!loc) return null;
+    const day = new Date(startSec * 1000).toISOString().slice(0, 10);
+    const w = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&hourly=temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,weather_code&start_date=${day}&end_date=${day}&timezone=UTC&wind_speed_unit=ms`)).json();
+    const H = w.hourly; if (!H || !H.time) return { place: `${loc.name}, ${loc.country}`, elev: loc.elevation };
+    let bi = 0, bd = Infinity; H.time.forEach((t, i) => { const d = Math.abs(Date.parse(t + ':00Z') / 1000 - startSec); if (d < bd){ bd = d; bi = i; } });
+    return { place: `${loc.name}, ${loc.country}`, elev: loc.elevation, t: H.temperature_2m[bi], pr: H.precipitation[bi], wind: H.wind_speed_10m[bi], gust: H.wind_gusts_10m ? H.wind_gusts_10m[bi] : null, code: WCODE[H.weather_code[bi]] || '' };
+  });
+}
+const weatherText = W => !W ? '' : `Погода у стадиона (${W.place}${W.elev ? ', высота ' + Math.round(W.elev) + ' м' : ''}) на время начала: ${W.t !== undefined ? Math.round(W.t) + '°C, ' : ''}${W.code || ''}${W.pr ? ', осадки ' + W.pr + ' мм/ч' : ''}${W.wind !== undefined ? ', ветер ' + Math.round(W.wind) + ' м/с' + (W.gust ? ' (порывы ' + Math.round(W.gust) + ')' : '') : ''}.`;
+
+/* английские названия тех же событий Фонбета: нужны, чтобы найти матч в API-Football */
+async function fonbetEnglish(){
+  return cached('fben', 10 * 60e3, async () => {
+    const hosts = lastDirect ? [lastDirect].concat(FB_LINE_HOSTS.filter(h => h !== lastDirect)) : FB_LINE_HOSTS;
+    for (const h of hosts.slice(0, 5)){
+      try {
+        const d = await (await fetch(h + '/events/list?lang=en&version=0&scopeMarket=1600', { cache: 'no-store' })).json();
+        if (d && Array.isArray(d.events)){ const map = {}; d.events.forEach(ev => { if (ev.level === 1 && ev.team1) map[String(ev.id)] = [ev.team1, ev.team2]; }); return map; }
+      } catch (e){}
+    }
+    return {};
+  });
+}
+const TR = { а:'a', б:'b', в:'v', г:'g', д:'d', е:'e', ё:'e', ж:'zh', з:'z', и:'i', й:'y', к:'k', л:'l', м:'m', н:'n', о:'o', п:'p', р:'r', с:'s', т:'t', у:'u', ф:'f', х:'kh', ц:'ts', ч:'ch', ш:'sh', щ:'sch', ъ:'', ы:'y', ь:'', э:'e', ю:'yu', я:'ya' };
+const latin = s => String(s || '').toLowerCase().split('').map(c => TR[c] !== undefined ? TR[c] : c).join('')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\b(fc|fk|cf|sc|ac|afc|cd|sd|ud|club|de|the|u\d\d|ii|reserves?)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+function dice(a, b){
+  a = latin(a).replace(/ /g, ''); b = latin(b).replace(/ /g, '');
+  if (!a || !b) return 0; if (a === b) return 1;
+  if (a.length > 3 && b.length > 3 && (a.includes(b) || b.includes(a))) return 0.9;
+  const bg = s => { const m = new Map(); for (let i = 0; i < s.length - 1; i++){ const g = s.slice(i, i + 2); m.set(g, (m.get(g) || 0) + 1); } return m; };
+  const A = bg(a), B = bg(b); let inter = 0; A.forEach((v, g) => { inter += Math.min(v, B.get(g) || 0); });
+  return 2 * inter / Math.max(1, (a.length - 1) + (b.length - 1));
+}
+
+/* ----- API-Football ----- */
+const AFB = 'https://v3.football.api-sports.io';
+let afbUsed = (() => { try { const o = JSON.parse(localStorage.getItem('fb_afb_used') || '{}'); return o.d === new Date().toISOString().slice(0, 10) ? o : { d: new Date().toISOString().slice(0, 10), n: 0 }; } catch (e){ return { d: '', n: 0 }; } })();
+async function afbGet(path){
+  const { data } = await provFetch('apifb', k => ({ url: AFB + path, init: { headers: { 'x-apisports-key': k } } }));
+  const today = new Date().toISOString().slice(0, 10); if (afbUsed.d !== today) afbUsed = { d: today, n: 0 };
+  afbUsed.n++; try { localStorage.setItem('fb_afb_used', JSON.stringify(afbUsed)); } catch (e){}
+  const errs = data && data.errors ? (Array.isArray(data.errors) ? data.errors : Object.values(data.errors)) : [];
+  if (errs.length) throw new Error('API-Football: ' + errs.join('; '));
+  return data.response || [];
+}
+async function afbDayList(day){
+  const key = 'fb_afb_day_' + day;
+  try { const c = JSON.parse(sessionStorage.getItem(key) || 'null'); if (c && Date.now() - c.at < 4 * 3600e3) return c.list; } catch (e){}
+  const res = await afbGet('/fixtures?date=' + day);
+  const list = res.map(f => ({ id: f.fixture.id, ts: f.fixture.timestamp, h: f.teams.home.name, a: f.teams.away.name, lg: f.league.name, cn: f.league.country, vn: f.fixture.venue && f.fixture.venue.name, vc: f.fixture.venue && f.fixture.venue.city, ref: f.fixture.referee || '' }));
+  try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), list })); } catch (e){}
+  return list;
+}
+async function afbFind(m){
+  if (m.sportKey !== 'football' || !m.start || !provHasKeys('apifb')) return null;
+  const en = (await fonbetEnglish())[String(m.id)] || [latin(m.team1), latin(m.team2)];
+  const day = new Date(m.start * 1000).toISOString().slice(0, 10);
+  const list = (await afbDayList(day)).filter(f => Math.abs(f.ts - m.start) <= 25 * 60);
+  const sc = list.map(f => ({ f, s1: dice(en[0], f.h), s2: dice(en[1], f.a) })).map(x => Object.assign(x, { s: x.s1 + x.s2 })).sort((a, b) => b.s - a.s);
+  const b = sc[0]; if (!b || b.s1 < 0.45 || b.s2 < 0.45 || b.s < 1.05 || (sc[1] && b.s - sc[1].s < 0.2)) return null;
+  return b.f;
+}
+/* составы, травмы, сравнение команд; кэш, чтобы не тратить лимит */
+async function afbBundle(m, deep){
+  const f = await afbFind(m); if (!f) return null;
+  const out = { fx: f, lineups: null, injuries: null, pred: null, errs: [] };
+  const soon = m.status === 'live' || (m.start * 1000 - Date.now() < 90 * 60e3);
+  const get = async (name, path, ttl) => { try { out[name] = await cached('afb|' + path, ttl, () => afbGet(path)); } catch (e){ out.errs.push(e.message); } };
+  if (soon) await get('lineups', '/fixtures/lineups?fixture=' + f.id, 15 * 60e3);
+  await get('injuries', '/injuries?fixture=' + f.id, 6 * 3600e3);
+  if (deep) await get('pred', '/predictions?fixture=' + f.id, 6 * 3600e3);
+  return out;
+}
+function afbText(B){
+  if (!B) return '';
+  const f = B.fx, L = [];
+  L.push(`API-Football: матч найден (${f.h} — ${f.a}, ${f.lg}${f.cn ? ', ' + f.cn : ''}). Стадион: ${f.vn || '—'}${f.vc ? ', ' + f.vc : ''}. Судья: ${f.ref || 'не назначен/неизвестен'}.`);
+  if (Array.isArray(B.lineups) && B.lineups.length) B.lineups.forEach(t => {
+    L.push(`Стартовый состав ${t.team && t.team.name} (схема ${t.formation || '?'}, тренер ${t.coach && t.coach.name || '?'}): ` + (t.startXI || []).map(x => `${x.player.name}${x.player.pos ? ' (' + x.player.pos + ')' : ''}`).join(', '));
+  });
+  else L.push('Официальные составы ещё не опубликованы (обычно за 20–60 минут до начала).');
+  if (Array.isArray(B.injuries) && B.injuries.length) L.push('Не сыграют / под вопросом: ' + B.injuries.slice(0, 20).map(x => `${x.team && x.team.name}: ${x.player && x.player.name} (${x.player && x.player.type || ''}${x.player && x.player.reason ? ', ' + x.player.reason : ''})`).join('; '));
+  else if (Array.isArray(B.injuries)) L.push('Травмированных и дисквалифицированных в API-Football нет.');
+  const P = Array.isArray(B.pred) && B.pred[0];
+  if (P){
+    const c = P.comparison || {}, th = P.teams || {};
+    const cmp = Object.entries(c).filter(([, v]) => v && v.home).map(([k, v]) => `${k} ${v.home}/${v.away}`).join(', ');
+    if (cmp) L.push('Сравнение команд API-Football (хозяева/гости): ' + cmp);
+    ['home', 'away'].forEach(s => { const T = th[s]; if (!T) return; const l5 = T.last_5 || {}, lg = T.league || {};
+      L.push(`${T.name}: форма последних 5: ${l5.form || '—'}, атака ${l5.att || '—'}, оборона ${l5.def || '—'}, голы за 5 матчей ${l5.goals && l5.goals.for ? l5.goals.for.total + '–' + l5.goals.against.total : '—'}; в сезоне форма ${String(lg.form || '').slice(-10)}`); });
+    if (Array.isArray(P.h2h) && P.h2h.length) L.push('Очные (API-Football): ' + P.h2h.slice(0, 5).map(x => `${x.teams.home.name} ${x.goals.home}:${x.goals.away} ${x.teams.away.name} (${String(x.fixture.date).slice(0, 10)})`).join('; '));
+    if (P.predictions && P.predictions.advice) L.push(`Подсказка API-Football (их модель, не истина): ${P.predictions.advice}; проценты ${JSON.stringify(P.predictions.percent || {})}`);
+  }
+  if (B.errs.length) L.push('Ошибки API-Football: ' + [...new Set(B.errs)].join('; '));
+  return L.join('\n');
+}
+
+/* ================= Конвейер анализа: разведчик → аналитик → (второй расчёт + критик) ================= */
+const OUTDOOR = ['football', 'tennis', 'rugby', 'baseball'];
+const CHECK = {
+  football: 'стартовые составы (подтверждённые или ожидаемые) и схема; кто не сыграет (травмы, дисквалификации, вызовы в сборные) и насколько это важные игроки; кто в воротах; лучшие бомбардиры и их форма за последние 5 матчей (голы, передачи, минуты, xG если есть); тренер (была ли недавно смена); мотивация и место в таблице; ротация из-за еврокубков и кубков; отдых, плотность календаря, переезды; стадион, город, газон (искусственный?), высота над уровнем моря; судья и его среднее число карточек; дерби или нет',
+  hockey: 'подтверждённые стартовые вратари и их статистика (процент отражённых, коэффициент надёжности); кто не сыграет; второй ли матч подряд (back-to-back); форма лидеров и звеньев; большинство и меньшинство; мотивация и таблица; переезды',
+  basket: 'официальный отчёт о травмах (не сыграют / под вопросом), отдых звёзд; второй матч подряд (back-to-back); темп игры, рейтинги атаки и защиты; лидеры по очкам и их минуты; мотивация и таблица; переезды и часовые пояса',
+  tennis: 'покрытие и турнир (крытый или открытый корт, скорость, высота); рейтинг и форма за последние 2–3 недели; усталость после прошлых матчей (длительность, сеты); травмы и снятия; личные встречи, особенно на этом покрытии; мотивация',
+  tt: 'рейтинг игроков, форма за последние дни (лиги вроде Pro League, Setka Cup, TT Cup), личные встречи; если данных нет, честно напиши',
+  esports: 'составы (замены, стендины), версия игры (патч), пул карт и процент побед на картах, форма за 2 недели, формат (BO1/BO3), мотивация',
+  volley: 'составы и травмы лидеров, форма, личные встречи, отдых, мотивация',
+  other: 'составы или участники, травмы, форма, личные встречи, место проведения, мотивация'
+};
+let scoutCache = (() => { try { return JSON.parse(localStorage.getItem('fb_scout') || '{}'); } catch (e){ return {}; } })();
+function saveScout(){
+  const ks = Object.keys(scoutCache), lim = Date.now() - 2 * 864e5;
+  ks.forEach(k => { if (scoutCache[k].at < lim) delete scoutCache[k]; });
+  const left = Object.keys(scoutCache); if (left.length > 120) left.sort((a, b) => scoutCache[a].at - scoutCache[b].at).slice(0, left.length - 120).forEach(k => delete scoutCache[k]);
+  try { localStorage.setItem('fb_scout', JSON.stringify(scoutCache)); } catch (e){}
+}
+function scoutTTL(m){ const left = (m.start || 0) * 1000 - Date.now(); return m.status === 'live' ? 30 * 60e3 : left < 3 * 3600e3 ? 45 * 60e3 : 6 * 3600e3; }
+const whenText = m => m.start ? new Date(m.start * 1000).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' МСК' : 'неизвестно';
+function buildScoutPrompt(m){
+  return `Ты разведчик спортивного аналитика. Найди в интернете свежие ФАКТЫ о матче. Прогнозы не нужны.
+Матч: ${m.team1} — ${m.team2}
+Турнир: ${m.league}. Вид спорта: ${m.sport}. Начало: ${whenText(m)}. ${m.status === 'live' ? 'Матч уже идёт, счёт ' + m.score + '.' : ''}
+Что проверить: ${CHECK[m.sportKey] || CHECK.other}.
+Правила: бери факты из свежих источников (официальные сайты клубов и лиг, Transfermarkt, Flashscore, Sofascore, спортивные СМИ) и указывай дату. Составы и травмы нужны именно на этот матч. У молодёжных, резервных и женских команд составы свои: не путай с основной командой. Не нашёл — пиши null. Ничего не выдумывай.
+Ответь ТОЛЬКО JSON:
+{"team1_en":"название команды 1 по-английски","team2_en":"…","venue":{"stadium":"","city":"","country":"","indoor":false,"surface":"","neutral":false,"altitude_m":null},"lineups":{"team1":"кто выйдет за ${m.team1} (подтверждено или ожидается)","team2":"то же за ${m.team2}","confirmed":false,"source_time":"когда опубликовано"},"absences":[{"team":"","player":"","role":"позиция или роль","status":"не сыграет|под вопросом","importance":1,"why":""}],"key_players":[{"team":"","player":"","status":"играет|под вопросом|не играет","form":"цифры за последние матчи","impact":"чем важен"}],"coach":{"team1":"","team2":""},"motivation":{"team1":"","team2":""},"schedule":{"team1":"отдых, предыдущий и следующий матч, переезды","team2":""},"referee":{"name":"","note":"карточки, пенальти в среднем"},"standings":"место в таблице и очки","h2h_note":"","news":[{"text":"","date":"","source":""}],"data_quality":"high|medium|low"}
+importance: 5 — лидер или основной вратарь, 3 — игрок основы, 1 — запасной.`;
+}
+async function runScout(m, force){
+  const c = scoutCache[m.id];
+  if (!force && c && Date.now() - c.at < scoutTTL(m)) return Object.assign({ cached: true }, c);
+  const p = searchProv();
+  if (!p) return { data: null, sources: [], note: `Разведка в интернете пропущена: у ${aiName()} нет поиска, а другого ИИ с поиском и ключом нет.` };
+  const r = await aiRequest(buildScoutPrompt(m), { search: true, prov: p, temp: 0.2, maxTokens: 5000 });
+  const rec = { at: Date.now(), data: parseBets(r.text), sources: (r.sources || []).slice(0, 12), prov: r.prov, model: r.model };
+  if (!rec.data) rec.note = 'Разведчик ответил не в формате JSON: факты не разобраны.';
+  scoutCache[m.id] = rec; saveScout();
+  return rec;
+}
+const SYS_ANALYST = 'Ты осторожный профессиональный аналитик спортивных ставок. Опираешься на числа и проверенные факты, не выдумываешь. Отвечаешь на русском, строго JSON.';
+const SYS_CRITIC = 'Ты строгий критик-перепроверщик прогнозов на спорт. Ищешь ошибки и завышенную уверенность. Отвечаешь на русском, строго JSON.';
+function buildAnalystPrompt(m, ctx, withDetail){
+  const M = ctx.M, before = m.start || Date.now() / 1000;
+  const subs = m.subs.filter(sb => Object.keys(sb.odds).length).slice(0, 25).map(sb => `${sb.name}: ${JSON.stringify(sb.odds)}${sb.score ? '; счёт этого рынка ' + sb.score : ''}`).join('\n');
+  const log = (matchLog[m.id] || []).slice(-15).map(l => `${clock(l.t).slice(0, 5)} ${l.text}`).join('\n');
+  const A = m.t1id ? teamStats(m.t1id, before, 10) : null, B = m.t2id ? teamStats(m.t2id, before, 10) : null;
+  const hh = (m.t1id && m.t2id) ? h2hIds(m.t1id, m.t2id, before) : [];
+  const sc = ctx.scout && ctx.scout.data;
+  const q = qualityText(m.sportKey);
+  return `ЗАДАЧА: дать честные вероятности и найти ставки, где у нас есть перевес над букмекером.
+МАТЧ: ${m.team1} — ${m.team2}. Турнир: ${m.league}. Спорт: ${m.sport}. Начало: ${whenText(m)}.
+СТАТУС: ${m.status === 'live' ? `идёт, счёт ${m.score}, ${fmtTimer(m, true)}` : m.status === 'upcoming' ? 'ещё не начался' : 'завершён'}${m.comment ? ' (' + m.comment + ')' : ''}.
+КОЭФФИЦИЕНТЫ (основные): ${JSON.stringify(m.odds)}
+${subs ? 'ДОП. РЫНКИ:\n' + subs + '\n' : ''}
+ВЕРОЯТНОСТИ, ПОСЧИТАННЫЕ ПРОГРАММОЙ (рынок без маржи | по статистике | итог модели | выгода при этом кэфе):
+${M ? modelTable(m, 30) : 'модель для этого матча не построена'}
+${M ? 'КАК ПОСЧИТАНО: ' + M.notes.join(' ') : ''}
+СТАТИСТИКА ИЗ АРХИВА ФОНБЕТА (по номерам команд, без путаницы с тёзками):
+${statsText(m.team1, A, m.sportKey)}
+${statsText(m.team2, B, m.sportKey)}
+Очные встречи (архив Фонбета): ${hh.length ? hh.map(r => `${r.hn} ${r.x}:${r.y} ${r.an} (${new Date(r.t * 1000).toLocaleDateString('ru-RU')})`).join('; ') : 'нет за период архива'}
+${movementText(m)}
+${log ? 'СОБЫТИЯ МАТЧА ПО ХОДУ:\n' + log : ''}
+${ctx.afb ? 'API-FOOTBALL:\n' + afbText(ctx.afb) : ''}
+${ctx.W ? weatherText(ctx.W) : ''}
+${sc ? 'РАЗВЕДКА В ИНТЕРНЕТЕ (' + clock(ctx.scout.at).slice(0, 5) + '): ' + JSON.stringify(sc).slice(0, 6000) : 'РАЗВЕДКИ В ИНТЕРНЕТЕ НЕТ: составы и новости неизвестны, будь осторожнее.'}
+${q ? 'ТОЧНОСТЬ ПРОШЛЫХ ПРОГНОЗОВ ПРОГРАММЫ (учитывай, чтобы не завышать уверенность): ' + q : ''}
+КАК РАБОТАТЬ:
+1) Основа — «итог модели» (рынок + статистика). Рынок букмекера обычно точен: отклоняйся, только если есть конкретные факты, которых он мог не учесть (составы, травмы ключевых игроков, вратарь, мотивация, усталость, переезд, погода, судья), или сильный сигнал статистики.
+2) Для каждого важного фактора дай поправку в процентных пунктах к конкретному рынку (adjustments). Один факт учитывай один раз. Обычно поправки 1–6 п.п.; больше 10 п.п. — только при очень сильных фактах.
+3) Итоговая вероятность = итог модели + поправки. Выгода = вероятность × кэф − 1.
+4) Дай от 1 до 3 ставок. Сначала с выгодой от +3%. Если таких нет — одну самую надёжную, value:false, и честно объясни в reason.
+5) Мало данных (низшие лиги, нет составов) — снижай уверенность и data_quality.
+6) Факты только из данных выше. Ничего не выдумывай.
+Ответь ТОЛЬКО JSON:
+{"summary":"2-3 предложения: главный вывод и почему","facts":["до 6 ключевых фактов с цифрами"],"data_quality":"high|medium|low","lineups":{"team1":"кто выйдет и кто не сыграет за ${m.team1}","team2":"то же за ${m.team2}","confirmed":false},"key_players":[{"team":"","player":"","status":"играет|под вопросом|не играет","impact":""}],"adjustments":[{"market":"ключ рынка, например П1 или ТБ(2.5)","pp":-3,"factor":"какой факт и почему"}],"bets":[{"market":"П1 или ТБ(2.5) из основных; для доп. рынка: название рынка, двоеточие, ставка (например «угловые: ТБ(9.5)»)","odds":1.85,"prob":57,"value":true,"risk":"low|medium|high","reason":"1-2 предложения, команды называй по имени"${withDetail ? ',"detail":"полное обоснование на 6-10 предложений: аргументы с цифрами; составы и игроки; форма и очные; почему вероятность такая и чем отличается от рынка; главные риски; итог"' : ''}}],"no_bet_reason":""}`;
+}
+function buildCriticPrompt(m, ctx, d){
+  const sc = ctx.scout && ctx.scout.data;
+  return `Перепроверь разбор аналитика. Ищи: факты, противоречащие данным; устаревшие новости; двойной учёт одного фактора; нереальные проценты; пропущенные важные отсутствия; ставку против сильного движения линии; ставку без выгоды.
+МАТЧ: ${m.team1} — ${m.team2} (${m.league}), ${m.status === 'live' ? 'идёт, счёт ' + m.score : 'начало ' + whenText(m)}.
+КОЭФФИЦИЕНТЫ: ${JSON.stringify(m.odds)}
+МОДЕЛЬ: ${ctx.M ? modelTable(m, 12) : 'нет'}
+${movementText(m)}
+${sc ? 'РАЗВЕДКА: ' + JSON.stringify({ absences: sc.absences, lineups: sc.lineups, motivation: sc.motivation, schedule: sc.schedule }).slice(0, 2500) : ''}
+РАЗБОР АНАЛИТИКА: ${JSON.stringify({ summary: d.summary, adjustments: d.adjustments, bets: (d.bets || []).map(b => ({ market: b.market, prob: b.prob, odds: b.odds, reason: b.reason })) }).slice(0, 4000)}
+Ответь ТОЛЬКО JSON: {"bets":[{"market":"как у аналитика","keep":true,"prob":число 1-99,"why":"коротко"}],"notes":"главные замечания одним-двумя предложениями"}`;
+}
+function mergeAnalyses(a, b){
+  const key = x => normMk(String(x.market || ''));
+  const map = new Map(); (a.bets || []).forEach(x => map.set(key(x), Object.assign({}, x, { n: 1 })));
+  (b.bets || []).forEach(x => { const k = key(x), y = map.get(k); if (y){ y.prob = (Number(y.prob) + Number(x.prob)) / 2; y.n = 2; } else map.set(k, Object.assign({}, x, { n: 1 })); });
+  const bets = [...map.values()].sort((x, y) => y.n - x.n).slice(0, 4);
+  bets.forEach(x => { if (x.n === 1) x.reason = (x.reason || '') + ' (ставку предложил только один из двух расчётов)'; delete x.n; });
+  const seen = new Set(), adj = (a.adjustments || []).concat(b.adjustments || []).filter(x => { const k = normName(x.factor).slice(0, 40); if (seen.has(k)) return false; seen.add(k); return true; });
+  return Object.assign({}, a, { bets, adjustments: adj, facts: [...new Set((a.facts || []).concat(b.facts || []))].slice(0, 8) });
+}
+const sameKey = (m, x, y) => { const p = resolvePick(m, x), q = resolvePick(m, y); return p.key && p.key === q.key && p.sub === q.sub; };
+/* итоговая вероятность: модель + доверенная доля мнения ИИ (доля подбирается по прошлым итогам) */
+function finalizeBets(m, d, M, critic){
+  if (!d || !Array.isArray(d.bets)) return;
+  const alpha = shrinkAlpha(m.sportKey), kept = [], dropped = [];
+  d.bets.forEach(b => {
+    const rp = resolvePick(m, b.market), sb = rp.sub >= 0 ? m.subs[rp.sub] : null;
+    const odd = rp.key ? Number(sb ? sb.odds[rp.key] : m.odds[rp.key]) : Number(b.odds);
+    let pAI = Number(b.prob) / 100; if (!(pAI > 0 && pAI < 1)) pAI = null;
+    const c = critic && Array.isArray(critic.bets) ? critic.bets.find(x => sameKey(m, x.market, b.market)) : null;
+    if (c && c.keep === false){ b.vetoed = c.why || 'снята критиком'; dropped.push(b); return; }
+    if (c && Number(c.prob) > 0 && Number(c.prob) < 100){ const pc = Number(c.prob) / 100; pAI = pAI === null ? pc : (pAI + pc) / 2; b.critic = c.why || ''; }
+    const mp = (!sb && rp.key && M && M.probs[rp.key]) ? M.probs[rp.key] : null;
+    const pm = (!sb && rp.key) ? marketProb(m, rp.key) : null;
+    const base = mp ? mp.p : pm;
+    let pf = pAI;
+    if (base !== null && base !== undefined && pAI !== null) pf = base + alpha * (pAI - base);
+    else if (pf === null && base !== null && base !== undefined) pf = base;
+    Object.assign(b, { pAI, pm, pmod: mp ? mp.pmod : null, pbase: base === undefined ? null : base, pf, push: mp ? mp.push : 0, alpha });
+    if (pf !== null && odd > 1){ b.ev = evOf(pf, b.push, odd); b.kelly = kellyOf(pf, b.push, odd); b.risk = riskFrom(pf); b.prob = Math.round(pf * 1000) / 10; b.odds = odd; }
+    b.adj = (d.adjustments || []).filter(a => sameKey(m, a.market, b.market)).slice(0, 6);
+    kept.push(b);
+  });
+  kept.sort((x, y) => (y.ev === undefined ? -9 : y.ev) - (x.ev === undefined ? -9 : x.ev));
+  d.bets = kept; d.dropped = dropped;
+}
+function mathBets(m, M){
+  if (!M) throw new Error('⚠️ Для этого матча модель не строится: нет основных коэффициентов (исход, тотал или фора).');
+  const rows = Object.entries(M.probs).map(([k, v]) => ({ k, v, odd: Number(m.odds[k]), ev: evOf(v.p, v.push, Number(m.odds[k])) })).filter(r => r.odd >= 1.15 && r.odd <= 6 && r.v.p >= 0.2);
+  const val = rows.filter(r => r.ev >= 0.02).sort((a, b) => b.ev - a.ev).slice(0, 3);
+  const pick = val.length ? val : rows.filter(r => r.ev >= -0.08).sort((a, b) => b.v.p - a.v.p).slice(0, 1);
+  const before = m.start || Date.now() / 1000;
+  const A = m.t1id ? teamStats(m.t1id, before, 10) : null, B = m.t2id ? teamStats(m.t2id, before, 10) : null;
+  const facts = M.notes.slice();
+  [[m.team1, A], [m.team2, B]].forEach(([n, S]) => { if (S) facts.push(`${n}: В${S.w} Н${S.d} П${S.l} в ${S.n} последних, ${r1(S.gf / S.n)}–${r1(S.ga / S.n)} в среднем, отдых ${r1(S.restDays)} дн.`); });
+  const mv = moveList(m); if (mv.length) facts.push(movementText(m));
+  return {
+    summary: val.length ? `Модель нашла перевес над рынком в ${val.length} ${val.length === 1 ? 'ставке' : 'ставках'}. Расчёт без ИИ: только коэффициенты и статистика.` : 'Перевеса над рынком модель не нашла: коэффициенты справедливые. Показана самая вероятная ставка без ценности.',
+    facts, data_quality: M.w > 0 ? 'medium' : 'low',
+    bets: pick.map(r => ({ market: r.k, odds: r.odd, prob: Math.round(r.v.p * 1000) / 10, value: r.ev >= 0.02, risk: riskFrom(r.v.p),
+      reason: `Рынок без маржи ${pct(r.v.pm)}, по статистике ${pct(r.v.pmod)}, модель ${pct(r.v.p)} → выгода ${r.ev >= 0 ? '+' : ''}${Math.round(r.ev * 100)}%.`,
+      detail: `${M.notes.join(' ')}\nСтавка: ${describeBet(m, r.k)} по кэф. ${r.odd}. Вероятность модели ${pct(r.v.p)}${r.v.push > 0.005 ? ' и возврат ' + pct(r.v.push) : ''}, рынок без маржи даёт ${pct(r.v.pm)}. ${r.ev >= 0.02 ? 'Перевес есть, но он может быть шумом модели: ставьте небольшую долю банка.' : 'Перевеса нет: это просто самый вероятный исход.'}` }))
+  };
+}
 async function analyzeSingleMatch(id, force){
   const m = matchById[id]; if (!m) return;
   const cur = aiResults[id];
   if (cur && (cur.state === 'loading' || (cur.state === 'done' && !force))) return;
-  aiResults[id] = { state:'loading' }; renderAll();
-  const deepWanted = $('anMode').value === 'deep', withDetail = $('detailChk').checked;
-  let mode = deepWanted ? 'deep' : 'quick', raw = '', sources = []; let fbWhy = '';
+  const mode = $('anMode').value, withDetail = $('detailChk').checked, notes = [];
+  const stage = t => { const r = aiResults[id]; if (r && r.state === 'loading'){ r.stage = t; renderAll(); } };
+  aiResults[id] = { state: 'loading', stage: '📐 Считаю модель по коэффициентам и архиву...' }; renderAll();
   try {
-    try {
-      raw = await geminiRequest(buildAnalysisPrompt(m, deepWanted, withDetail), !deepWanted, deepWanted);
-      if (deepWanted) sources = lastGrounding.slice(0, 6);
-    } catch (err){
-      if (deepWanted && /quota|exceed|resource_exhausted|429|google_search|ground|tool/i.test(String(err.message))){
-        mode = 'quick'; sources = []; fbWhy = String(err.message).slice(0, 160);
-        raw = await geminiRequest(buildAnalysisPrompt(m, false, withDetail), true, false);
-      } else throw err;
+    const M = modelFor(m);
+    let data, scout = null, afb = null, W = null, prov = '', model = '', critic = null;
+    if (mode === 'math') data = mathBets(m, M);
+    else {
+      if (mode === 'deep' || mode === 'max'){
+        const sp = searchProv();
+        stage(`🔎 Разведчик (${aiName(sp || aiCfg.prov)}) ищет составы, травмы, новости...`);
+        try { scout = await runScout(m, force); if (scout.note) notes.push(scout.note); } catch (e){ notes.push('Разведка не удалась: ' + e.message); }
+      }
+      if (mode !== 'quick' && m.sportKey === 'football' && provHasKeys('apifb')){
+        stage('⚽ API-Football: составы, травмы, сравнение команд...');
+        try { afb = await afbBundle(m, true); if (!afb) notes.push('API-Football: матч не найден в их базе (или не удалось сопоставить названия).'); } catch (e){ notes.push(e.message); }
+      }
+      const V = scout && scout.data && scout.data.venue;
+      const city = (afb && afb.fx.vc) || (V && V.city);
+      if (mode !== 'quick' && city && OUTDOOR.includes(m.sportKey) && !(V && V.indoor === true)){
+        try { W = await weatherFor(String(city).replace(/\(.*\)/, '').trim(), (V && V.country) || (afb && afb.fx.cn) || '', m.start || Date.now() / 1000); } catch (e){}
+      }
+      const ctx = { M, scout, afb, W };
+      stage(`🧠 Аналитик (${aiName()}) считает вероятности...`);
+      const prompt = buildAnalystPrompt(m, ctx, withDetail);
+      const runA = async () => { const r = await aiRequest(prompt, { json: true, thinking: true, temp: 0.3, system: SYS_ANALYST, maxTokens: 8000 }); return { d: parseBets(r.text), r }; };
+      const A1 = await runA();
+      if (!A1.d) throw new Error(`⚠️ ${aiName(A1.r.prov)} ответил не в формате JSON. Нажмите «Пересчитать».`);
+      data = A1.d; prov = A1.r.prov; model = A1.r.model;
+      if (mode === 'max'){
+        stage('🧠 Второй независимый расчёт...');
+        try { const A2 = await runA(); if (A2.d) data = mergeAnalyses(data, A2.d); } catch (e){ notes.push('Второй расчёт не удался: ' + e.message); }
+        stage('🧐 Критик перепроверяет разбор...');
+        try { critic = parseBets((await aiRequest(buildCriticPrompt(m, ctx, data), { json: true, temp: 0.2, system: SYS_CRITIC, maxTokens: 3000 })).text); } catch (e){ notes.push('Критик не ответил: ' + e.message); }
+      }
+      if (scout && scout.data){
+        if (!data.lineups || (!data.lineups.team1 && !data.lineups.team2)) data.lineups = scout.data.lineups;
+        if (!Array.isArray(data.key_players) || !data.key_players.length) data.key_players = scout.data.key_players;
+      }
+      if (!data.data_quality && scout && scout.data) data.data_quality = scout.data.data_quality;
     }
-    aiResults[id] = { state:'done', raw, data: parseBets(raw), at: Date.now(), score: m.score, mode, sources, fellBack: deepWanted && mode === 'quick', fbWhy };
+    finalizeBets(m, data, M, critic);
+    if (!data.bets.length && !(data.dropped || []).length) throw new Error('⚠️ ИИ не предложил ни одной ставки. ' + (data.no_bet_reason || 'Нажмите «Пересчитать».'));
+    aiResults[id] = { state: 'done', raw: JSON.stringify(data), data, at: Date.now(), score: m.score, mode, prov, model, notes, critic,
+      sources: (scout && scout.sources) || [], scoutAt: scout ? scout.at : 0, scoutCached: !!(scout && scout.cached), scout: scout && scout.data ? scout.data : null,
+      ctx: { weather: weatherText(W), afb: afb ? afbText(afb) : '', move: movementText(m), model: M ? M.notes.join(' ') : '' } };
     const A = recordAnalysis(m); if (A) aiResults[id].aid = A.aid;
-  } catch (err){ aiResults[id] = { state:'error', text: err.message }; }
+  } catch (err){ aiResults[id] = { state: 'error', text: err.message }; }
   renderAll();
+}
+/* за 15–70 минут до начала заново проверяем составы по подтверждённым ставкам */
+let recheckBusy = false;
+async function lineupRecheck(){
+  if (recheckBusy) return;
+  const mode = $('anMode') ? $('anMode').value : ''; if (mode !== 'deep' && mode !== 'max') return;
+  const now = Date.now();
+  const A = analyses.find(a => !a.ended && !a.rechecked && a.ms && a.bets.some(isMine) && a.ms * 1000 - now < 70 * 60e3 && a.ms * 1000 - now > 15 * 60e3);
+  if (!A) return;
+  const m = matchById[A.mid]; if (!m || m.status !== 'upcoming') return;
+  recheckBusy = true; A.rechecked = now;
+  try {
+    const old = scoutCache[A.mid] && scoutCache[A.mid].data;
+    const rec = await runScout(m, true);
+    let afb = null; if (provHasKeys('apifb') && m.sportKey === 'football'){ try { afb = await afbBundle(m, false); } catch (e){} }
+    const imp = ((rec.data && rec.data.absences) || []).filter(x => Number(x.importance) >= 4 && /не сыгр/i.test(String(x.status || '')));
+    const oldN = new Set(((old && old.absences) || []).map(x => normName(x.player)));
+    const fresh = imp.filter(x => !oldN.has(normName(x.player)));
+    const lu = rec.data && rec.data.lineups;
+    let msg = `🔄 Составы перепроверены за ${Math.round((A.ms * 1000 - now) / 60000)} мин до начала${lu && lu.confirmed ? ' (составы подтверждены)' : ''}${afb && Array.isArray(afb.lineups) && afb.lineups.length ? ', официальные составы опубликованы' : ''}.`;
+    if (fresh.length){ msg += ' ⚠️ Новые важные отсутствия: ' + fresh.map(x => `${x.team}: ${x.player}${x.role ? ' (' + x.role + ')' : ''}`).join('; ') + '. Решите, оставлять ли ставку.'; toast(`⚠️ ${A.t1} — ${A.t2}: изменился состав, проверьте ставку`); }
+    else msg += ' Новых важных отсутствий нет.';
+    A.recheck = msg;
+    A.bets.forEach(b => { const p = predOf(b); if (p && !p.virtual && p.state === 'pending') p.note = msg; });
+    saveStore(); renderAll();
+  } catch (e){ A.recheck = 'Перепроверка составов не удалась: ' + e.message; }
+  finally { recheckBusy = false; }
+}
+
+/* ================= Обучение на итогах: насколько верить ИИ, где он силён и слаб ================= */
+const MK_TYPE = k => /^(П1|X|П2)$/.test(k) ? 'Исход' : /^(1X|X2|12)$/.test(k) ? 'Двойной шанс' : /^Т[БМ]/.test(k) ? 'Тоталы' : /^Ф[12]/.test(k) ? 'Форы' : 'Другие рынки';
+const SK_NAME = sk => (SPORTS.find(s => s[0] === sk) || [0, sk || 'другое'])[1];
+const settled = sk => preds.filter(p => p.src === 'single' && (p.state === 'won' || p.state === 'lost') && (!sk || p.sk === sk));
+const alphaCache = {};
+function shrinkAlpha(sk){
+  const c = alphaCache[sk]; if (c && Date.now() - c.at < 60e3) return c.a;
+  const xs = settled(sk).filter(p => p.pAI > 0 && p.pbase > 0);
+  let a = 0.5;
+  if (xs.length >= 25){
+    let best = Infinity;
+    for (let t = 0; t <= 10; t++){
+      const al = t / 10; let s = 0;
+      xs.forEach(p => { const q = p.pbase + al * (p.pAI - p.pbase), y = p.state === 'won' ? 1 : 0; s += (q - y) ** 2; });
+      if (s < best - 1e-9){ best = s; a = al; }
+    }
+  }
+  alphaCache[sk] = { at: Date.now(), a, n: xs.length };
+  return a;
+}
+function qStats(xs){
+  const n = xs.length; if (!n) return null;
+  const won = xs.filter(p => p.state === 'won').length;
+  const roi = xs.reduce((s, p) => s + (p.state === 'won' ? (Number(p.odd) || 1) - 1 : -1), 0) / n;
+  const br = f => { const ys = xs.filter(p => f(p) > 0); return ys.length ? ys.reduce((s, p) => s + (f(p) - (p.state === 'won' ? 1 : 0)) ** 2, 0) / ys.length : null; };
+  const cl = xs.filter(p => p.close > 1 && p.odd > 1);
+  return { n, hit: won / n, roi, bM: br(p => p.pm), bA: br(p => p.pAI), bF: br(p => p.pf || (p.prob ? p.prob / 100 : 0)), avgF: xs.reduce((s, p) => s + (p.pf || (p.prob || 0) / 100), 0) / n, clv: cl.length ? cl.reduce((s, p) => s + (p.odd / p.close - 1), 0) / cl.length : null, cln: cl.length };
+}
+function qualityText(sk){
+  const xs = settled(sk); if (xs.length < 8) return '';
+  const Q = qStats(xs), parts = [`по виду спорта «${SK_NAME(sk)}»: ${Q.n} прогнозов, сбылось ${pct(Q.hit)} при средней заявленной вероятности ${pct(Q.avgF)}${Q.hit < Q.avgF - 0.05 ? ' (программа была слишком самоуверенна)' : Q.hit > Q.avgF + 0.05 ? ' (программа была слишком осторожна)' : ''}, доходность ${Math.round(Q.roi * 100)}%`];
+  const types = {}; xs.forEach(p => { (types[MK_TYPE(p.sub ? '' : p.market)] = types[MK_TYPE(p.sub ? '' : p.market)] || []).push(p); });
+  const weak = Object.entries(types).map(([t, ys]) => [t, qStats(ys)]).filter(([, q]) => q.n >= 12 && q.roi < -0.1).map(([t, q]) => `${t} (${q.n} шт., доходность ${Math.round(q.roi * 100)}%)`);
+  if (weak.length) parts.push('слабые рынки, избегай без сильных доводов: ' + weak.join(', '));
+  return parts.join('; ');
+}
+function qualityHtml(){
+  const xs = settled(); if (xs.length < 5) return `<details class="man"><summary>📈 Качество аналитика</summary><div class="why">Пока мало завершённых прогнозов (${xs.length}). Экран заполнится, когда наберётся хотя бы 5.</div></details>`;
+  const row = (lbl, Q) => `<div class="bd-row"><span>${esc(lbl)}</span><span>${Q.n} · сбылось ${pct(Q.hit)} (обещали ${pct(Q.avgF)}) · доходность ${Q.roi >= 0 ? '+' : ''}${Math.round(Q.roi * 100)}%${Q.clv !== null ? ' · цена ' + (Q.clv >= 0 ? '+' : '') + (Q.clv * 100).toFixed(1) + '%' : ''}</span></div>`;
+  const bySk = {}; xs.forEach(p => { (bySk[p.sk || 'x'] = bySk[p.sk || 'x'] || []).push(p); });
+  let h = row('Все', qStats(xs));
+  Object.entries(bySk).sort((a, b) => b[1].length - a[1].length).forEach(([sk, ys]) => {
+    h += row(SK_NAME(sk), qStats(ys));
+    const types = {}; ys.forEach(p => { (types[MK_TYPE(p.sub ? '' : p.market)] = types[MK_TYPE(p.sub ? '' : p.market)] || []).push(p); });
+    Object.entries(types).forEach(([t, zs]) => { if (zs.length >= 3) h += row('   └ ' + t, qStats(zs)); });
+  });
+  const Q = qStats(xs), f = x => x === null ? '—' : x.toFixed(3);
+  const al = Object.keys(bySk).map(sk => { shrinkAlpha(sk); const c = alphaCache[sk]; return `${SK_NAME(sk)}: ${Math.round(c.a * 100)}%${c.n < 25 ? ' (по умолчанию, мало данных)' : ''}`; }).join('; ');
+  return `<details class="man"><summary>📈 Качество аналитика (${xs.length} завершённых прогнозов)</summary><div class="bd">${h}
+    <div class="bd-row"><span>Ошибка вероятностей (меньше — лучше)</span><span>рынок ${f(Q.bM)} · ИИ ${f(Q.bA)} · итог ${f(Q.bF)}</span></div>
+    <div class="hint" style="text-align:left">«Цена» — насколько ваш коэффициент был лучше коэффициента перед началом матча: плюс означает, что ставка сделана до того, как рынок сдвинулся в её сторону (признак настоящего перевеса). Насколько программа доверяет мнению ИИ: ${esc(al)}. Доля подбирается сама по итогам (нужно от 25 прогнозов в виде спорта).</div></div></details>`;
+}
+
+function updAnHint(){
+  if (!$('anMode')) return;
+  const v = $('anMode').value, det = $('detailChk').checked, sp = searchProv();
+  $('anModeTxt').textContent = { math: '📐 только математика', quick: '⚡ быстрый', deep: '🧠 глубокий', max: '🏆 максимум' }[v] || v;
+  const t = { math: 'Без ИИ: модель по коэффициентам и архиву Фонбета. Токены не тратятся.',
+    quick: `1 запрос к ${aiName()} без поиска в интернете.`,
+    deep: `2 запроса: разведчик с поиском (${sp ? aiName(sp) : 'нет ИИ с поиском и ключом'}) и аналитик ${aiName()}.`,
+    max: `4–5 запросов: разведчик (${sp ? aiName(sp) : 'нет ИИ с поиском'}), аналитик ${aiName()} дважды и критик.` }[v] || '';
+  $('anHint').textContent = t + (v !== 'math' ? (det ? ' С полным обоснованием (ответ длиннее).' : ' Короткий ответ.') : '') + (provHasKeys('apifb') ? ' API-Football подключён.' : '');
+}
+function modelBlockHtml(m){
+  const M = modelFor(m), before = m.start || Date.now() / 1000;
+  const A = m.t1id ? teamStats(m.t1id, before, 10) : null, B = m.t2id ? teamStats(m.t2id, before, 10) : null;
+  let h = '';
+  if (M){
+    h += `<div class="why">${esc(M.notes.join(' '))}</div>`;
+    const rows = Object.entries(M.probs).map(([k, v]) => ({ k, v, odd: Number(m.odds[k]), ev: evOf(v.p, v.push, Number(m.odds[k])) })).sort((a, b) => b.ev - a.ev).slice(0, 10);
+    h += `<div class="bd">` + rows.map(r => `<div class="bd-row"><span>${esc(r.k)} · кэф ${esc(r.odd)}</span><span>рынок ${pct(r.v.pm)} · модель ${pct(r.v.p)} · <b style="color:${r.ev >= 0.02 ? 'var(--accent)' : r.ev <= -0.05 ? 'var(--red)' : 'var(--muted)'}">${r.ev >= 0 ? '+' : ''}${Math.round(r.ev * 100)}%</b></span></div>`).join('') + `<div class="hint" style="text-align:left">Последний столбец — выгода ставки по модели (плюс = коэффициент выше справедливого).</div></div>`;
+  }
+  [[m.team1, A], [m.team2, B]].forEach(([n, S]) => { h += `<div class="why">${esc(statsText(n, S, m.sportKey)).replace(/\n/g, '<br>')}</div>`; });
+  const hh = (m.t1id && m.t2id) ? h2hIds(m.t1id, m.t2id, before) : [];
+  if (hh.length) h += `<div class="why">Очные: ${hh.map(r => `${esc(r.hn)} ${r.x}:${r.y} ${esc(r.an)}`).join('; ')}</div>`;
+  const mv = movementText(m); if (mv) h += `<div class="why">${esc(mv)}</div>`;
+  if (!ARC.count) h += `<div class="hint" style="text-align:left">${esc(ARC.info || 'Архив Фонбета ещё загружается…')}</div>`;
+  return h;
+}
+function expHint(m){
+  const M = modelFor(m); if (!M) return '';
+  return Object.entries(M.probs).map(([k, v]) => ({ k, p: v.p, ev: evOf(v.p, v.push, Number(m.odds[k])) })).filter(x => x.p >= 0.45)
+    .sort((a, b) => b.ev - a.ev).slice(0, 3).map(x => `${x.k} ${pct(x.p)} (выгода ${x.ev >= 0 ? '+' : ''}${Math.round(x.ev * 100)}%)`).join(', ');
 }
 
 /* ================= Экспресс ================= */
@@ -1629,7 +2642,7 @@ function renderExpressList(list){
 function renderExpressResult(){
   const el = $('exResult'), r = expResult;
   if (!r){ el.innerHTML = ''; return; }
-  if (r.state === 'loading'){ el.innerHTML = '<div class="ai-box"><div class="log">⏳ Gemini собирает экспресс...</div></div>'; return; }
+  if (r.state === 'loading'){ el.innerHTML = `<div class="ai-box"><div class="log">⏳ ${esc(aiName())} собирает экспресс...</div></div>`; return; }
   if (r.state === 'error'){ el.innerHTML = `<div class="ai-box"><div class="bad">${esc(r.text)}</div></div>`; return; }
   let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная</div>`;
   if (r.summary) h += `<div class="ai-sum">${esc(r.summary)}</div>`;
@@ -1657,8 +2670,8 @@ async function buildExpress(){
     if (n < 3){ expResult = { state:'error', text:'⚠️ Для авто-экспресса нужно минимум 3 подходящих события. Смените источник, спорт или фильтр даты.' }; renderExpressResult(); return; }
   }
   expResult = { state:'loading' }; renderExpressResult();
-  const lines = list.map(m => `[id=${m.id}] ${m.league} | ${m.team1} — ${m.team2} | ${m.status === 'live' ? 'LIVE ' + fmtTimer(m, false) + ', счёт ' + m.score : 'начало ' + fmtStart(m)} | коэф: ${JSON.stringify(Object.fromEntries(Object.entries(m.odds).slice(0, 12)))}`).join('\n');
-  const prompt = `Собери экспресс из ${n} событий. ${auto ? 'Выбери из списка РОВНО ' + n + ' событий' : 'Используй ВСЕ ' + n + ' событий из списка'}, для каждого дай ОДНУ ставку: наиболее вероятный и нерискованный исход (market — точное название из коэффициентов этого события, например П1, X, П2, Ф1(0), ТБ(2.5)). Разрешённые уровни риска ставок: ${allowedRisk.join(', ')} (low — надёжная, medium — средний риск, high — рискованная). ${auto ? 'Выбирай ТОЛЬКО ставки этих уровней; если для события такой ставки нет, не включай его.' : 'По возможности выбирай ставки этих уровней.'}\nСобытия:\n${lines}\n\nОтветь ТОЛЬКО JSON: {"summary":"1-2 предложения о логике экспресса","legs":[{"id":число из списка,"market":"...","risk":"low|medium|high","reason":"кратко, называй команды по названию, а не П1/П2"}]}. Русский язык.`;
+  const lines = list.map(m => `[id=${m.id}] ${m.league} | ${m.team1} — ${m.team2} | ${m.status === 'live' ? 'LIVE ' + fmtTimer(m, false) + ', счёт ' + m.score : 'начало ' + fmtStart(m)} | коэф: ${JSON.stringify(Object.fromEntries(Object.entries(m.odds).slice(0, 12)))}${(() => { const x = expHint(m); return x ? ' | модель: ' + x : ''; })()}`).join('\n');
+  const prompt = `Собери экспресс из ${n} событий. ${auto ? 'Выбери из списка РОВНО ' + n + ' событий' : 'Используй ВСЕ ' + n + ' событий из списка'}, для каждого дай ОДНУ ставку: наиболее вероятный и нерискованный исход (market — точное название из коэффициентов этого события, например П1, X, П2, Ф1(0), ТБ(2.5)). Разрешённые уровни риска ставок: ${allowedRisk.join(', ')} (low — надёжная, medium — средний риск, high — рискованная). ${auto ? 'Выбирай ТОЛЬКО ставки этих уровней; если для события такой ставки нет, не включай его.' : 'По возможности выбирай ставки этих уровней.'}\nУ событий указаны вероятности модели программы (рынок + статистика) и выгода: предпочитай исходы с высокой вероятностью и неотрицательной выгодой, не бери два события, которые зависят друг от друга.\nСобытия:\n${lines}\n\nОтветь ТОЛЬКО JSON: {"summary":"1-2 предложения о логике экспресса","legs":[{"id":число из списка,"market":"...","risk":"low|medium|high","reason":"кратко, называй команды по названию, а не П1/П2"}]}. Русский язык.`;
   try {
     const d = parseBets(await geminiRequest(prompt, true));
     const seen = new Set(), legs = [];
@@ -1819,6 +2832,7 @@ function makePred(m, o){
   touchTrack(m);
   return { pid: uid('p'), src: o.src, mid: String(m.id), sk: m.sportKey, ms: m.start || 0, t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon,
     market: o.market, sub: o.sub || '', risk: o.risk, odd: o.odd, prob: o.prob || null, desc: o.desc || '', reason: o.reason || '',
+    pAI: o.pAI ?? null, pbase: o.pbase ?? null, pm: o.pm ?? null, pf: o.pf ?? null, ev: o.ev ?? null,
     at: Date.now(), state: o.key ? 'pending' : 'unknown', note: o.key ? '' : 'ставка не распознана — отметьте вручную' };
 }
 function saveExpress(legs, summary, total){
@@ -1911,7 +2925,7 @@ function backfillMonitoring(byId){
     const m = byId[A.mid]; if (!m || m.status === 'finished') return;
     A.bets.forEach(b => {
       if (b.pid && preds.some(p => p.pid === b.pid)) return;
-      const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason });
+      const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason, prob: b.prob, pAI: b.pAI, pbase: b.pbase, pm: b.pm, pf: b.pf, ev: b.ev });
       p.aid = A.aid; p.virtual = true; preds.push(p); b.pid = p.pid;
     });
   });
@@ -1928,6 +2942,7 @@ function updateTracking(fresh, healthy){
     if (m){
       Object.assign(t, snap(m)); if (m.status === 'live') t.seenLive = true;
       t.lastSeen = Date.now(); t.miss = 0;
+      if (m.status === 'upcoming') preds.forEach(p => { if (p.mid === mid && p.state === 'pending' && !p.sub){ const v = Number(m.odds[p.market]); if (v > 1) p.close = v; } });
       analyses.filter(a => a.mid === mid && !a.ended).forEach(a => {
         const last = a.timeline[a.timeline.length - 1];
         if (!last || last.score !== m.score){ a.timeline.push({ t: Date.now(), min: m.status === 'live' ? fmtTimer(m, false) : '', score: m.score }); if (a.timeline.length > 40) a.timeline.shift(); }
@@ -1956,13 +2971,15 @@ function recordAnalysis(m){
   const r = aiResults[m.id];
   const A = { aid: uid('a'), mid: String(m.id), t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon, at: Date.now(), score: m.score, ms: m.start || 0,
     summary: (r && r.data && r.data.summary) || '', facts: (r && r.data && Array.isArray(r.data.facts)) ? r.data.facts.slice(0, 8).map(String) : [], lineups: (r && r.data && r.data.lineups) || null,
-    players: (r && r.data && Array.isArray(r.data.key_players)) ? r.data.key_players.slice(0, 16) : [], quality: (r && r.data && r.data.data_quality) || '', mode: (r && r.mode) || '', sources: ((r && r.sources) || []).slice(0, 6), bets: [], timeline: [{ t: Date.now(), min: m.status === 'live' ? fmtTimer(m, false) : '', score: m.score }], final: null, ended: null };
+    players: (r && r.data && Array.isArray(r.data.key_players)) ? r.data.key_players.slice(0, 16) : [], quality: (r && r.data && r.data.data_quality) || '', mode: (r && r.mode) || '', sources: ((r && r.sources) || []).slice(0, 8),
+    prov: (r && r.prov) || '', model: (r && r.model) || '', notes: (r && r.notes) || [], ctx: (r && r.ctx) || null, criticNote: (r && r.critic && r.critic.notes) || '', bets: [], timeline: [{ t: Date.now(), min: m.status === 'live' ? fmtTimer(m, false) : '', score: m.score }], final: null, ended: null };
   es.forEach(e => {
     const sb = e.sub >= 0 ? m.subs[e.sub] : null;
     const b = { market: e.key || String(e.b.market || ''), key: e.key, sub: sb ? sb.name : '', risk: e.risk,
       odd: e.key ? Number(sb ? sb.odds[e.key] : m.odds[e.key]) : (Number(e.b.odds) || 0), desc: betWho(m, e), reason: e.b.reason || '', pid: null, detail: String(e.b.detail || ''),
-      prob: Number(e.b.prob) || null, mkt: (e.key && !sb) ? marketProb(m, e.key) : null };
-    const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason, prob: b.prob });
+      prob: Number(e.b.prob) || null, mkt: (e.key && !sb) ? marketProb(m, e.key) : null,
+      pm: e.b.pm ?? null, pmod: e.b.pmod ?? null, pAI: e.b.pAI ?? null, pbase: e.b.pbase ?? null, pf: e.b.pf ?? null, ev: e.b.ev ?? null, kelly: e.b.kelly ?? null, adj: e.b.adj || [], critic: e.b.critic || '', alpha: e.b.alpha, value: e.b.value };
+    const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason, prob: b.prob, pAI: b.pAI, pbase: b.pbase, pm: b.pm, pf: b.pf, ev: b.ev });
     p.aid = A.aid; p.virtual = true; preds.push(p); b.pid = p.pid; A.bets.push(b);
   });
   analyses.push(A); saveStore(); renderStats();
@@ -2023,8 +3040,9 @@ const isMine = b => { const p = predOf(b); return !!p && !p.virtual; };
 function analysisBetHtml(A, b, i){
   const p = predOf(b), ex = p ? explainPred(p) : '', bkey = A.aid + '|' + i;
   const ctx = { title: (b.sub ? b.sub + ': ' : '') + b.market, who: b.desc, odd: b.odd, prob: b.prob, mkt: b.mkt, reason: b.reason, detail: b.detail, risk: b.risk,
-    facts: A.facts, lineups: A.lineups, players: A.players, quality: A.quality, mode: A.mode, sources: A.sources, t1: A.t1, t2: A.t2 };
-  return `<div class="bet ${b.risk}" data-bd="${esc(bkey)}"><div class="bet-top"><b>${esc((b.sub ? b.sub + ': ' : '') + b.market)}</b>${b.desc ? `<span class="bet-who">→ ${esc(b.desc)}</span>` : ''}<span class="bet-odd">кэф ${esc(b.odd || '—')}</span><span class="bet-risk">${RISK[b.risk] || ''}</span></div><div class="bet-why">${esc(b.reason)}</div>${b.prob ? `<div class="why">Оценка ИИ: ${Math.round(b.prob)}%${b.mkt ? ' · рынок: ' + Math.round(b.mkt * 100) + '%' : ''}</div>` : ''}<div class="tap-hint">Нажмите на ставку: полное обоснование ›</div><div class="bet-detail ${betOpen.has(bkey) ? 'open' : ''}">${rationaleHtml(ctx)}</div>${betStateHtml(A, i, b)}${ex ? `<div class="why">${esc(ex)}</div>` : ''}${p && p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${p && p.state !== 'pending' ? `<details class="man"><summary>Исправить вручную</summary>${manualBtns(p)}</details>` : ''}</div>`;
+    pm: b.pm, pmod: b.pmod, pAI: b.pAI, pbase: b.pbase, pf: b.pf, ev: b.ev, kelly: b.kelly, adj: b.adj, critic: b.critic, alpha: b.alpha,
+    facts: A.facts, lineups: A.lineups, players: A.players, quality: A.quality, mode: A.mode, prov: A.prov, model: A.model, sources: A.sources, t1: A.t1, t2: A.t2 };
+  return `<div class="bet ${b.risk}" data-bd="${esc(bkey)}"><div class="bet-top"><b>${esc((b.sub ? b.sub + ': ' : '') + b.market)}</b>${b.desc ? `<span class="bet-who">→ ${esc(b.desc)}</span>` : ''}<span class="bet-odd">кэф ${esc(b.odd || '—')}</span><span class="bet-risk">${RISK[b.risk] || ''}</span></div><div class="bet-why">${esc(b.reason)}</div>${probHtml(b)}<div class="tap-hint">Нажмите на ставку: полное обоснование ›</div><div class="bet-detail ${betOpen.has(bkey) ? 'open' : ''}">${rationaleHtml(ctx)}</div>${betStateHtml(A, i, b)}${ex ? `<div class="why">${esc(ex)}</div>` : ''}${p && p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${p && p.state !== 'pending' ? `<details class="man"><summary>Исправить вручную</summary>${manualBtns(p)}</details>` : ''}</div>`;
 }
 /* Если в разборе есть подтверждённые ставки, показываем только их; остальные прогнозы ИИ свёрнуты */
 function analysisCard(A){
@@ -2035,6 +3053,7 @@ function analysisCard(A){
   let h = `<div class="hx"><div class="hx-head" data-omid="${esc(A.mid)}"><b>${A.icon || ''} ${esc(A.t1)} — ${esc(A.t2)} <span class="open-hint">· открыть ›</span></b><span class="hx-sub" style="margin:0">${hasMine ? `⭐ Мои ставки: ${mine.length} · ` : ''}${fmtDT(A.at)}</span></div>
     <div class="hx-sub">${esc(A.league)} · сейчас: ${liveLine({ mid: A.mid, final: A.final, ms: A.ms })}</div>
     ${pending ? '<div class="mon">👁 Слежу за матчем автоматически</div>' : ''}
+    ${A.recheck ? `<div class="hx-n">${esc(A.recheck)}</div>` : ''}
     ${!hasMine && A.summary ? `<div class="ai-sum">${esc(A.summary)}</div>` : ''}
     <div class="tl">Ход матча: ${tl}${A.ended ? (A.final ? ` → итог <b>${esc(A.final)}</b> 🏁` : ' → итог не получен') : ''}</div>`;
   rows.forEach(x => { h += analysisBetHtml(A, x.b, x.i); });
@@ -2048,7 +3067,7 @@ function renderAnalyses(){
   const list = analyses.filter(a => inPer(a.at, pr) && (!q || (a.t1 + ' ' + a.t2 + ' ' + a.league).toLowerCase().includes(q)));
   const conf = list.filter(a => a.bets.some(isMine)).reverse(), fresh = list.filter(a => !a.bets.some(isMine)).reverse();
   const singles = preds.filter(p => p.src === 'single' && inPer(p.at, pr));
-  let h = tallyHtml('Мои ставки (подтверждённые):', tally(singles.filter(p => !p.virtual).map(p => p.state))) + tallyHtml('Все прогнозы ИИ (включая неподтверждённые):', tally(singles.map(p => p.state))) + breakdownHtml(singles) + calibrationHtml(singles);
+  let h = tallyHtml('Мои ставки (подтверждённые):', tally(singles.filter(p => !p.virtual).map(p => p.state))) + tallyHtml('Все прогнозы ИИ (включая неподтверждённые):', tally(singles.map(p => p.state))) + breakdownHtml(singles) + calibrationHtml(singles) + qualityHtml();
   h += `<div class="ex-row">` + [['all', `Все (${list.length})`], ['conf', `⭐ Мои ставки (${conf.length})`], ['new', `Не подтверждены (${fresh.length})`]]
     .map(([k, l]) => `<button data-av="${k}" class="${anView === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
   h += searchBar();
@@ -2192,17 +3211,17 @@ function eligibleUnknown(force){
     SEARCH_SPORTS.includes(sportOfPred(p)) && (p.srchN || 0) < 4 && (force || !p.virtual));
 }
 function friendlyGemini(msg, short){
-  msg = String(msg || '');
-  if (/location/i.test(msg)) return short ? 'Gemini недоступен из вашего региона (смените страну VPN)' : 'Gemini недоступен из вашего региона или через текущий VPN. Смените страну VPN.';
-  if (/quota|exceed|rate|resource_exhausted|429/i.test(msg)) return short ? 'Лимит Gemini исчерпан, поиск отложен' : 'Лимит запросов Gemini исчерпан на всех ключах (бесплатный лимит сбрасывается раз в сутки). Подождите, добавьте ключи из других проектов Google AI Studio или выберите другую модель (flash-lite). А пока итог можно ввести вручную: счёт под «Исправить вручную».';
-  return short ? 'Gemini недоступен, поиск не выполнялся' : msg;
+  msg = String(msg || ''); const nm = aiName(searchProv() || aiCfg.prov);
+  if (/location/i.test(msg)) return short ? `${nm} недоступен из вашего региона (смените страну VPN)` : `${nm} недоступен из вашего региона или через текущий VPN. Смените страну VPN.`;
+  if (/quota|exceed|rate|resource_exhausted|429|лимит/i.test(msg)) return short ? `Лимит ${nm} исчерпан, поиск отложен` : `Лимит запросов ${nm} исчерпан на всех ключах. Подождите, добавьте ключи (для Gemini — из других проектов Google AI Studio), включите в ⚙️ запасной ИИ или выберите другую модель. А пока итог можно ввести вручную: счёт под «Исправить вручную».`;
+  return short ? `${nm} недоступен, поиск не выполнялся` : msg;
 }
 function searchBar(){
   const n = new Set(eligibleUnknown(true).map(p => p.mid)).size;
   const unknownAny = preds.some(p => p.state === 'unknown');
   let h = '';
   if (resInfo) h += `<div class="hint" style="text-align:left">📋 ${esc(resInfo)}</div>`;
-  if (geminiDown && Date.now() - geminiDown.at < 2 * 3600e3) h += `<div class="srv-note">⚠️ Поиск итогов через Gemini не работает: ${esc(friendlyGemini(geminiDown.msg))}</div>`;
+  if (geminiDown && Date.now() - geminiDown.at < 2 * 3600e3) h += `<div class="srv-note">⚠️ Поиск итогов через ${esc(aiName(searchProv() || aiCfg.prov))} не работает: ${esc(friendlyGemini(geminiDown.msg))}</div>`;
   if (unknownAny && !trackerOk) h += `<div class="srv-note">Слежение за итогами на сервере пока не работает: обновите бэкенд (server.js и tracker-core.js на GitHub). Без него итоги ловятся, только пока приложение открыто.</div>`;
   if (n) h += `<div class="cf-row"><button class="cf-btn" data-sact="search">🔎 Узнать итоги через интернет (матчей: ${n})</button></div>`;
   return h;
@@ -2229,13 +3248,14 @@ function applyFound(mid, a, b){
   preds.filter(p => p.mid === mid && p.state === 'unknown' && !p.sub).forEach(p => {
     const st = evalPred(p, t); if (st === 'unknown') return;
     if (!p.sub) histAddPred(p, a, b);
-    p.state = st; p.final = `${a}:${b}`; p.via = 'search'; p.note = `🔎 Итог найден через поиск Google (Gemini): ${a}:${b}`; p.settledAt = Date.now();
+    p.state = st; p.final = `${a}:${b}`; p.via = 'search'; p.note = `🔎 Итог найден через поиск в интернете (${aiName(searchProv() || aiCfg.prov)}): ${a}:${b}`; p.settledAt = Date.now();
   });
   analyses.filter(x => x.mid === mid && !x.final).forEach(x => { x.final = `${a}:${b}`; x.ended = x.ended || Date.now(); x.via = 'search'; });
 }
 async function resolveViaSearch(force){
   if (searchBusy || searchOff) return;
-  if (!keyOrder().length || !$('modelSelect').value){ if (force) toast('Добавьте ключ Gemini в ⚙️ и выберите модель'); return; }
+  const sp = searchProv();
+  if (!sp){ if (force) toast('Нужен ИИ с поиском в интернете (Gemini, Qwen или Claude) с ключом в ⚙️'); return; }
   const todo = eligibleUnknown(force).filter(p => force || !p.srchAt || Date.now() - p.srchAt > 30 * 60 * 1000);
   const mids = [...new Set(todo.map(p => p.mid))].slice(0, 6);
   if (!mids.length){ if (force) toast('Нечего проверять'); return; }
@@ -2247,18 +3267,12 @@ async function resolveViaSearch(force){
       const prompt = `Найди в интернете (Google) итоговый результат уже сыгранного матча.\nВид спорта: ${sport === 'football' ? 'футбол' : sport === 'hockey' ? 'хоккей' : 'баскетбол'}. Турнир: ${p0.league}. Дата матча: ${when}.\nКоманда 1: ${p0.t1}. Команда 2: ${p0.t2}.\nВерни ТОЛЬКО JSON без пояснений: {"found":true или false,"finished":true или false,"team1":"название Команды 1 по-русски","team2":"название Команды 2 по-русски","score1":целое число,"score2":целое число,"source":"сайт"}.\nscore1 и score2 — счёт Команды 1 и Команды 2 ${sport === 'basket' ? 'по итогам матча, включая овертайм' : 'по итогам основного времени (без овертайма, дополнительного времени и пенальти)'}.\nЕсли матч не найден, не закончился или ты не уверен, верни {"found":false}. Ничего не выдумывай.`;
       let res = null, stop = false, apiErr = '';
       try {
-        const { data } = await geminiFetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent($('modelSelect').value)}:generateContent`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], tools: [{ google_search: {} }] })
-        });
-        if (data.error){
-          const em = String(data.error.message);
-          if (/google_search|ground|tool/i.test(em)){ searchOff = true; stop = true; toast('Эта модель не поддерживает поиск Google. Выберите другую модель (flash) в списке.'); }
-          else apiErr = em;
-        } else {
-          const cand = data.candidates && data.candidates[0];
-          res = parseBets((cand && cand.content && cand.content.parts ? cand.content.parts.map(x => x.text || '').join('') : '') || '');
-        }
-      } catch (err){ apiErr = err.message || 'нет связи'; }
+        const rr = await aiRequest(prompt, { search: true, prov: sp, temp: 0 });
+        res = parseBets(rr.text || '');
+      } catch (err){
+        if (err.code === 'tool'){ searchOff = true; stop = true; toast(`${aiName(sp)}: эта модель не поддерживает поиск в интернете. Выберите другую модель.`); }
+        else apiErr = err.message || 'нет связи';
+      }
       if (stop) break;
       if (apiErr){   // Gemini не ответил: это не «попытка поиска», счётчик не трогаем
         geminiDown = { msg: apiErr, at: Date.now() };
