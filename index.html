@@ -3955,6 +3955,7 @@ function tallyHtml(label, c){
   return `<div class="st-row"><b>${label}</b> ✅ ${c.won}${wp} · ❌ ${c.lost}${lp}` + (c.void ? ` · ↩️ ${c.void}` : '') + (c.unknown ? ` · ❓ ${c.unknown}` : '') + (c.pending ? ` · ⏳ ${c.pending}` : '') +
     `</div><div class="st-prog"><span style="width:${c.pct === null ? 0 : c.pct}%"></span></div>`;
 }
+let moneyMode = (() => { try { return localStorage.getItem('fb_mmode') || 'total'; } catch (e){ return 'total'; } })();
 function renderStats(){
   const pr = readPeriod(), pm = new Map(preds.map(p => [p.pid, p]));
   const cp = tally(preds.filter(p => p.src === 'single' && !p.virtual && inPer(p.at, pr)).map(p => p.state));
@@ -3962,7 +3963,14 @@ function renderStats(){
   const ms = moneySum(preds.filter(p => p.src === 'single' && !p.virtual && inPer(p.at, pr)).map(predMoney));
   const me = moneySum(exps.filter(e => inPer(e.at, pr)).map(e => expMoney(e, pm)));
   const mt = mergeMoney(ms, me);
-  $('stBody').innerHTML = tallyHtml('Анализы матчей (подтверждённые):', cp) + tallyHtml('Экспрессы:', ce) + moneyPanel('💰 Деньги за период: одиночные + экспрессы', mt) + moneyRow('Одиночные:', ms) + moneyRow('Экспрессы:', me);
+  const sw = `<div class="ex-row"><span>💰 Показать:</span>` + [['total', 'Всё вместе (тотал)'], ['split', 'Раздельно: одиночные и экспрессы']].map(([k, l]) => `<button data-mm="${k}" class="${moneyMode === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
+  if (moneyMode === 'split'){
+    $('stBody').innerHTML = sw + tallyHtml('Одиночные ставки (подтверждённые):', cp) + moneyPanel('💰 Одиночные ставки', ms) + tallyHtml('Экспрессы:', ce) + moneyPanel('💰 Экспрессы', me);
+  } else {
+    const all = tally(preds.filter(p => p.src === 'single' && !p.virtual && inPer(p.at, pr)).map(p => p.state).concat(exps.filter(e => inPer(e.at, pr)).map(e => expStatus(e, pm))));
+    const part = (n, o) => o.n || o.np ? `${n} — итог <b class="${o.profit >= 0 ? 'good' : 'bad'}">${sgnRub(o.profit)}</b> (${pctS(o.roi)})${o.np ? ', в игре ' + rub(o.inPlay) : ''}` : `${n} — ставок с суммой нет`;
+    $('stBody').innerHTML = sw + tallyHtml('Все ставки (одиночные + экспрессы):', all) + moneyPanel('💰 Деньги: одиночные + экспрессы', mt) + `<div class="mp-s" style="margin-top:-2px">Из них: ${part('одиночные', ms)}; ${part('экспрессы', me)}. Нажмите «Раздельно», чтобы увидеть всё по отдельности.</div>`;
+  }
 }
 function initStats(){
   loadStore();
@@ -3970,6 +3978,7 @@ function initStats(){
   if (!localStorage.getItem('fb_srchfix')){ preds.forEach(p => { p.srchN = 0; p.srchAt = 0; }); localStorage.setItem('fb_srchfix', '1'); }
   $('stPeriod').addEventListener('change', () => { const c = $('stPeriod').value === 'custom'; $('stFrom').style.display = c ? '' : 'none'; $('stTo').style.display = c ? '' : 'none'; renderStats(); renderMatches(); });
   ['stFrom', 'stTo'].forEach(id => $(id).addEventListener('input', () => { renderStats(); renderMatches(); }));
+  $('statsBar').addEventListener('click', e => { const b = e.target.closest('[data-mm]'); if (!b) return; moneyMode = b.dataset.mm; try { localStorage.setItem('fb_mmode', moneyMode); } catch (x){} renderStats(); });
   renderStats();
 }
 
