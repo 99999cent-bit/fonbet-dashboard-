@@ -488,8 +488,23 @@ function setSync(){
 
 /* ================= Парсинг данных ================= */
 const KNOWN = { 921:'П1', 922:'X', 923:'П2' };
+/* Расшифровано по линии Фонбета (listBase, 18.11.2026): для каждой пары номеров проверено, какой рынок объясняет коэффициенты
+   на ~1000 футбольных и ~200 хоккейных матчах (ошибка 1–5%, вторая гипотеза в 2–8 раз хуже). 4241 подтверждён купоном Фонбета («Обе забьют - да»). */
+const FMAP = (() => {
+  const m = {}, pairs = (a, b, list) => list.forEach(([x, y]) => { m[x] = a; m[y] = b; });
+  pairs('ТБ', 'ТМ', [[1736, 1737], [1696, 1697], [1730, 1731], [1739, 1791], [1727, 1728], [1733, 1734], [1796, 1797], [1793, 1794], [1799, 1800], [1802, 1803]]);
+  pairs('Ф1', 'Ф2', [[1672, 1675], [989, 991], [910, 912], [1569, 1572], [1677, 1678], [1680, 1681], [1683, 1684], [1686, 1687]]);
+  pairs('ИТ1Б', 'ИТ1М', [[1815, 1816], [1809, 1810], [1812, 1813], [1821, 1822], [1818, 1819], [1824, 1825], [1827, 1828], [1830, 1831]]);
+  pairs('ИТ2Б', 'ИТ2М', [[1854, 1871], [1873, 1874], [1880, 1881], [1886, 1887], [1883, 1884], [1893, 1894], [1896, 1897]]);
+  m[4241] = 'ОЗ да'; m[4242] = 'ОЗ нет';
+  m[2820] = 'Ф1(0)'; m[2821] = 'Ф2(0)'; m[7035] = 'Ф1(0)'; m[7036] = 'Ф2(0)';   // победа, при ничьей возврат
+  return m;
+})();
+const PRIM = new Set([921, 922, 923, 924, 925, 1571, 927, 928, 930, 931, 937, 938, 940, 941]);
 function factorLabel(id, param){
   if (KNOWN[id]) return KNOWN[id];
+  const fm = FMAP[id];
+  if (fm){ if (/^ОЗ|\(/.test(fm)) return fm; if (param === '' || param === null || param === undefined) return null; return `${fm}(${param})`; }
   if (id===927||id===937) return `Ф1(${param})`;
   if (id===928||id===938) return `Ф2(${param})`;
   if (id===930||id===940) return `ТБ(${param})`;
@@ -498,15 +513,15 @@ function factorLabel(id, param){
   return null;
 }
 function parseFactors(arr){
-  const main = {}, extra = [];
-  if (!arr) return { main, extra };
+  const main = {}, extra = [], prim = [];
+  if (!arr) return { main, extra, prim };
   for (const f of arr){
     const param = (f.pt !== undefined && f.pt !== null && f.pt !== '') ? f.pt : ((f.p !== undefined && f.p !== null) ? (f.p / 100) : '');
     const label = factorLabel(f.f, param);
-    if (label) main[label] = f.v;
+    if (label){ if (PRIM.has(f.f) || DC_MAP[f.f] || main[label] === undefined) main[label] = f.v; if (PRIM.has(f.f) || DC_MAP[f.f]) prim.push(label); }
     else extra.push({ label: `#${f.f}${param !== '' ? ' ('+param+')' : ''}`, v: f.v });
   }
-  return { main, extra };
+  return { main, extra, prim };
 }
 
 /* Статус: поддерживаем разные названия полей, т.к. формат бэкенда не гарантирован */
@@ -593,7 +608,7 @@ function buildMatches(data){
       status, start, place: ev.place || '',
       score: `${s1} : ${s2}`, comment: misc.comment || '',
       timerSeconds: misc.timerSeconds ?? null, timerDir: misc.timerDirection ?? 1, timerAt: (Number(misc.timerUpdateTimestampMsec) > Date.now() - 3 * 3600e3 && Number(misc.timerUpdateTimestampMsec) < Date.now() + 60e3) ? Number(misc.timerUpdateTimestampMsec) : fetchedAt,
-      odds: pf.main, extra: pf.extra, subs, oddsDir: {}, scoreChanged: false
+      odds: pf.main, prim: pf.prim, extra: pf.extra, subs, oddsDir: {}, scoreChanged: false
     });
   });
   fresh.subParent = subParent;
@@ -855,7 +870,7 @@ function passFilters(m, q){
 }
 
 function cardHtml(m, showLeague){
-  const entries = Object.entries(m.odds), pk = pickMap(m);
+  const entries = Object.entries(m.odds).filter(([k]) => !m.prim || !m.prim.length || m.prim.includes(k)), pk = pickMap(m);
   const oddsHtml = entries.length
     ? `<div class="odds-grid">` + entries.map(([k, v]) => `<div class="odd-btn ${m.oddsDir[k] || ''} ${pk[k] ? 'pick-' + pk[k] : ''}"><span class="odd-label">${esc(k)}</span><span class="odd-val">${esc(v)}</span></div>`).join('') + `</div>`
     : `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Коэффициенты закрыты</div>`;
@@ -1069,6 +1084,14 @@ function marketTables(odds, dirs){
     const t = tot[key];
     return `<div class="mk-tot"><span class="par">${esc(key)}</span>${t['ТБ'] ? oddCell('Больше', odds[t['ТБ']], dirs[t['ТБ']], t['ТБ']) : '<div></div>'}${t['ТМ'] ? oddCell('Меньше', odds[t['ТМ']], dirs[t['ТМ']], t['ТМ']) : '<div></div>'}</div>`;
   }).join('') });
+  ['1', '2'].forEach(t => {
+    const it = {};
+    Object.keys(odds).forEach(k => { const mm = k.match(new RegExp('^ИТ' + t + '([БМ])\\((.*)\\)$')); if (mm) (it[mm[2]] = it[mm[2]] || { n: nParam(mm[2]) })[mm[1]] = k; });
+    const ks = Object.keys(it).sort((x, y) => (it[x].n ?? 0) - (it[y].n ?? 0));
+    if (ks.length) out.push({ title: 'Инд. тотал ' + t, html: ks.map(key => { const q = it[key]; return `<div class="mk-tot"><span class="par">${esc(key)}</span>${q['Б'] ? oddCell('Больше', odds[q['Б']], dirs[q['Б']], q['Б']) : '<div></div>'}${q['М'] ? oddCell('Меньше', odds[q['М']], dirs[q['М']], q['М']) : '<div></div>'}</div>`; }).join('') });
+  });
+  const oz = ['ОЗ да', 'ОЗ нет'].filter(k => odds[k] !== undefined);
+  if (oz.length) out.push({ title: 'Обе забьют', html: `<div class="mk-row2">${oz.map(k => oddCell(k === 'ОЗ да' ? 'Да' : 'Нет', odds[k], dirs[k], k)).join('')}</div>` });
   return out;
 }
 
@@ -1630,10 +1653,11 @@ function parseBets(raw){
   try { const t = raw.replace(/```json|```/g, '').trim(); return JSON.parse(t.slice(t.indexOf('{'), t.lastIndexOf('}') + 1)); } catch (e){ return null; }
 }
 function normMk(s){
-  s = String(s || '').toLowerCase().replace(/\s+/g, '').replace(/,/g, '.').replace(/\+/g, '').replace(/x/g, '\u0445').replace(/^ничья$/, '\u0445');
+  s = String(s || '').toLowerCase().replace(/\s+/g, '').replace(/,/g, '.').replace(/\+/g, '').replace(/x/g, '\u0445').replace(/^ничья$/, '\u0445')
+    .replace(/^(обезабьют|обекомандызабьют|оз)[:\-–—]?(да|нет)$/, 'оз$2').replace(/^ит([бм])([12])/, 'ит$2$1').replace(/^индтотал([12])/, 'ит$1');
   let mm = s.match(/^(?:тотал)?(больше|меньше)\(?(-?\d+(?:\.\d+)?)\)?$/);
   if (mm) return (mm[1] === 'больше' ? 'тб' : 'тм') + '(' + parseFloat(mm[2]) + ')';
-  mm = s.match(/^(ф1|ф2|тб|тм)\(?(-?\d+(?:\.\d+)?)\)?$/);
+  mm = s.match(/^(ф1|ф2|тб|тм|ит1б|ит1м|ит2б|ит2м)\(?(-?\d+(?:\.\d+)?)\)?$/);
   return mm ? mm[1] + '(' + parseFloat(mm[2]) + ')' : s;
 }
 function resolveKeyIn(odds, market){
@@ -1676,6 +1700,10 @@ function describeBet(m, key){
   if (key === '1X') return `${m.team1} или ничья`;
   if (key === 'X2') return `Ничья или ${m.team2}`;
   if (key === '12') return 'Победа любой команды (без ничьей)';
+  if (key === 'ОЗ да') return 'Обе команды забьют';
+  if (key === 'ОЗ нет') return 'Хотя бы одна команда не забьёт';
+  const mi = key.match(/^ИТ([12])([БМ])\((.*)\)$/);
+  if (mi) return `${mi[1] === '1' ? m.team1 : m.team2}: забьёт ${mi[2] === 'Б' ? 'больше' : 'меньше'} ${mi[3]}`;
   const mm = key.match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/);
   if (mm){
     if (mm[1] === 'Ф1') return `${m.team1} с форой ${mm[2]}`;
@@ -1690,7 +1718,7 @@ function describeSub(m, sb, key){
   if (key === 'X') return `${sb.name}: поровну`;
   return `${sb.name}: ${describeBet(m, key)}`;
 }
-const groupOf = k => /^(П1|X|П2)$/.test(k) ? 'Исход' : /^(1X|X2|12)$/.test(k) ? 'Двойной шанс' : /^Ф[12]/.test(k) ? 'Фора' : /^Т[БМ]/.test(k) ? 'Тотал' : '';
+const groupOf = k => /^(П1|X|П2)$/.test(k) ? 'Исход' : /^(1X|X2|12)$/.test(k) ? 'Двойной шанс' : /^Ф[12]/.test(k) ? 'Фора' : /^Т[БМ]/.test(k) ? 'Тотал' : /^ИТ1/.test(k) ? 'Инд. тотал 1' : /^ИТ2/.test(k) ? 'Инд. тотал 2' : /^ОЗ /.test(k) ? 'Обе забьют' : '';
 function pickEntries(m){
   const r = aiResults[m.id];
   if (!r || r.state !== 'done' || !r.data || !Array.isArray(r.data.bets)) return [];
@@ -1780,10 +1808,12 @@ function marketProb(m, key){
   const o = m.odds, v = k => Number(o[k]), inv = k => 1 / v(k);
   if (['П1', 'X', 'П2'].includes(key) && v('П1') > 1 && v('X') > 1 && v('П2') > 1) return inv(key) / (inv('П1') + inv('X') + inv('П2'));
   if ((key === 'П1' || key === 'П2') && v('П1') > 1 && v('П2') > 1 && !(v('X') > 1)) return inv(key) / (inv('П1') + inv('П2'));
-  const mm = String(key).match(/^(ТБ|ТМ|Ф1|Ф2)\((.*)\)$/);
+  if (key === 'ОЗ да' || key === 'ОЗ нет'){ const o2 = key === 'ОЗ да' ? 'ОЗ нет' : 'ОЗ да'; if (v(key) > 1 && v(o2) > 1) return inv(key) / (inv(key) + inv(o2)); }
+  const mm = String(key).match(/^(ТБ|ТМ|Ф1|Ф2|ИТ1Б|ИТ1М|ИТ2Б|ИТ2М)\((.*)\)$/);
   if (mm){
     let other = null;
     if (mm[1] === 'ТБ') other = `ТМ(${mm[2]})`; else if (mm[1] === 'ТМ') other = `ТБ(${mm[2]})`;
+    else if (/^ИТ/.test(mm[1])) other = `${mm[1].slice(0, 3)}${mm[1].endsWith('Б') ? 'М' : 'Б'}(${mm[2]})`;
     else {
       const h = parseFloat(String(mm[2]).replace(',', '.')), pre = mm[1] === 'Ф1' ? 'Ф2(' : 'Ф1(';
       if (!isNaN(h)) other = Object.keys(o).find(k => k.startsWith(pre) && parseFloat(k.slice(3, -1).replace(',', '.')) === -h) || null;
@@ -2090,11 +2120,12 @@ const parseLine = s => parseFloat(String(s).replace(',', '.'));
 function outcome(key, a, b){
   if (key === 'П1') return [a > b ? 1 : 0, 0]; if (key === 'П2') return [b > a ? 1 : 0, 0]; if (key === 'X') return [a === b ? 1 : 0, 0];
   if (key === '1X') return [a >= b ? 1 : 0, 0]; if (key === 'X2') return [b >= a ? 1 : 0, 0]; if (key === '12') return [a !== b ? 1 : 0, 0];
-  const mm = String(key).match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/); if (!mm) return null;
+  if (key === 'ОЗ да') return [a > 0 && b > 0 ? 1 : 0, 0]; if (key === 'ОЗ нет') return [a > 0 && b > 0 ? 0 : 1, 0];
+  const mm = String(key).match(/^(Ф1|Ф2|ТБ|ТМ|ИТ1Б|ИТ1М|ИТ2Б|ИТ2М)\((.*)\)$/); if (!mm) return null;
   const p0 = parseLine(mm[2]); if (isNaN(p0)) return null;
   const lines = ((p0 * 4) % 2 !== 0) ? [p0 - 0.25, p0 + 0.25] : [p0];
   let w = 0, v = 0;
-  lines.forEach(l => { const d = mm[1] === 'Ф1' ? a + l - b : mm[1] === 'Ф2' ? b + l - a : mm[1] === 'ТБ' ? a + b - l : l - (a + b); if (d > 1e-9) w += 1 / lines.length; else if (Math.abs(d) < 1e-9) v += 1 / lines.length; });
+  lines.forEach(l => { const d = mm[1] === 'Ф1' ? a + l - b : mm[1] === 'Ф2' ? b + l - a : mm[1] === 'ТБ' ? a + b - l : mm[1] === 'ТМ' ? l - (a + b) : mm[1] === 'ИТ1Б' ? a - l : mm[1] === 'ИТ1М' ? l - a : mm[1] === 'ИТ2Б' ? b - l : l - b; if (d > 1e-9) w += 1 / lines.length; else if (Math.abs(d) < 1e-9) v += 1 / lines.length; });
   return [w, v];
 }
 /* вероятность (выигрыш, возврат) по распределению оставшихся голов + текущий счёт */
@@ -2463,7 +2494,7 @@ ${q ? 'ТОЧНОСТЬ ПРОШЛЫХ ПРОГНОЗОВ ПРОГРАММЫ (у
 5) Мало данных (низшие лиги, нет составов) — снижай уверенность и data_quality.
 6) Факты только из данных выше. Ничего не выдумывай.
 Ответь ТОЛЬКО JSON:
-{"summary":"2-3 предложения: главный вывод и почему","facts":["до 6 ключевых фактов с цифрами"],"data_quality":"high|medium|low","lineups":{"team1":"кто выйдет и кто не сыграет за ${m.team1}","team2":"то же за ${m.team2}","confirmed":false},"key_players":[{"team":"","player":"","status":"играет|под вопросом|не играет","impact":""}],"adjustments":[{"market":"ключ рынка, например П1 или ТБ(2.5)","pp":-3,"factor":"какой факт и почему"}],"bets":[{"market":"П1 или ТБ(2.5) из основных; для доп. рынка: название рынка, двоеточие, ставка (например «угловые: ТБ(9.5)»)","odds":1.85,"prob":57,"value":true,"risk":"low|medium|high","reason":"1-2 предложения, команды называй по имени"${withDetail ? ',"detail":"полное обоснование на 6-10 предложений: аргументы с цифрами; составы и игроки; форма и очные; почему вероятность такая и чем отличается от рынка; главные риски; итог"' : ''}}],"no_bet_reason":""}`;
+{"summary":"2-3 предложения: главный вывод и почему","facts":["до 6 ключевых фактов с цифрами"],"data_quality":"high|medium|low","lineups":{"team1":"кто выйдет и кто не сыграет за ${m.team1}","team2":"то же за ${m.team2}","confirmed":false},"key_players":[{"team":"","player":"","status":"играет|под вопросом|не играет","impact":""}],"adjustments":[{"market":"ключ рынка, например П1 или ТБ(2.5)","pp":-3,"factor":"какой факт и почему"}],"bets":[{"market":"точный ключ из коэффициентов: П1, X, П2, 1X, ТБ(2.5), ТМ(3), Ф1(+1), ИТ1Б(1.5) — инд. тотал команды 1 больше, ИТ2М(0.5) — инд. тотал команды 2 меньше, ОЗ да / ОЗ нет — обе забьют; для доп. рынка: название рынка, двоеточие, ставка (например «угловые: ТБ(9.5)»)","odds":1.85,"prob":57,"value":true,"risk":"low|medium|high","reason":"1-2 предложения, команды называй по имени"${withDetail ? ',"detail":"полное обоснование на 6-10 предложений: аргументы с цифрами; составы и игроки; форма и очные; почему вероятность такая и чем отличается от рынка; главные риски; итог"' : ''}}],"no_bet_reason":""}`;
 }
 function buildCriticPrompt(m, ctx, d){
   const sc = ctx.scout && ctx.scout.data;
@@ -3177,7 +3208,7 @@ async function buildExpress(){
     if (n < 3){ expResult = { state:'error', text:'⚠️ Для авто-экспресса нужно минимум 3 подходящих события. Смените источник, спорт или фильтр даты.' }; renderExpressResult(); return; }
   }
   expResult = { state:'loading' }; renderExpressResult();
-  const lines = list.map(m => `[id=${m.id}] ${m.league} | ${m.team1} — ${m.team2} | ${m.status === 'live' ? 'LIVE ' + fmtTimer(m, false) + ', счёт ' + m.score : 'начало ' + fmtStart(m)} | коэф: ${JSON.stringify(Object.fromEntries(Object.entries(m.odds).slice(0, 12)))}${(() => { const x = expHint(m); return x ? ' | модель: ' + x : ''; })()}`).join('\n');
+  const lines = list.map(m => `[id=${m.id}] ${m.league} | ${m.team1} — ${m.team2} | ${m.status === 'live' ? 'LIVE ' + fmtTimer(m, false) + ', счёт ' + m.score : 'начало ' + fmtStart(m)} | коэф: ${JSON.stringify(Object.fromEntries(Object.entries(m.odds).filter(([k]) => !m.prim || !m.prim.length || m.prim.includes(k) || /^(ОЗ |ИТ[12][БМ]\((0\.5|1\.5)\))/.test(k)).slice(0, 18)))}${(() => { const x = expHint(m); return x ? ' | модель: ' + x : ''; })()}`).join('\n');
   const prompt = `Собери экспресс из ${n} событий. ${auto ? 'Выбери из списка РОВНО ' + n + ' событий' : 'Используй ВСЕ ' + n + ' событий из списка'}, для каждого дай ОДНУ ставку: наиболее вероятный и нерискованный исход (market — точное название из коэффициентов этого события, например П1, X, П2, Ф1(0), ТБ(2.5)). Разрешённые уровни риска ставок: ${allowedRisk.join(', ')} (low — надёжная, medium — средний риск, high — рискованная). ${auto ? 'Выбирай ТОЛЬКО ставки этих уровней; если для события такой ставки нет, не включай его.' : 'По возможности выбирай ставки этих уровней.'}\nУ событий указаны вероятности модели программы (рынок + статистика) и выгода: предпочитай исходы с высокой вероятностью и неотрицательной выгодой, не бери два события, которые зависят друг от друга.\nСобытия:\n${lines}\n\nОтветь ТОЛЬКО JSON: {"summary":"1-2 предложения о логике экспресса","legs":[{"id":число из списка,"market":"...","risk":"low|medium|high","reason":"кратко, называй команды по названию, а не П1/П2"}]}. Русский язык.`;
   try {
     const rr = await aiRequest(prompt, { json: true });
@@ -3475,22 +3506,26 @@ function evalPred(p, t){
   if (k === '1X') return a >= b ? 'won' : 'lost';
   if (k === 'X2') return b >= a ? 'won' : 'lost';
   if (k === '12') return a !== b ? 'won' : 'lost';
-  const mm = k.match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/); if (!mm) return 'unknown';
+  if (k === 'ОЗ да') return a > 0 && b > 0 ? 'won' : 'lost';
+  if (k === 'ОЗ нет') return a > 0 && b > 0 ? 'lost' : 'won';
+  const mm = k.match(/^(Ф1|Ф2|ТБ|ТМ|ИТ1Б|ИТ1М|ИТ2Б|ИТ2М)\((.*)\)$/); if (!mm) return 'unknown';
   const p0 = parseFloat(String(mm[2]).replace(',', '.')); if (isNaN(p0)) return 'unknown';
   const lines = ((p0 * 4) % 2 !== 0) ? [p0 - 0.25, p0 + 0.25] : [p0];   // четвертные линии делим пополам
   let sum = 0;
   lines.forEach(l => {
-    const v = mm[1] === 'Ф1' ? a + l - b : mm[1] === 'Ф2' ? b + l - a : mm[1] === 'ТБ' ? a + b - l : l - (a + b);
+    const v = mm[1] === 'Ф1' ? a + l - b : mm[1] === 'Ф2' ? b + l - a : mm[1] === 'ТБ' ? a + b - l : mm[1] === 'ТМ' ? l - (a + b) : mm[1] === 'ИТ1Б' ? a - l : mm[1] === 'ИТ1М' ? l - a : mm[1] === 'ИТ2Б' ? b - l : l - b;
     sum += Math.sign(v);
   });
   return sum > 0 ? 'won' : sum < 0 ? 'lost' : 'void';
 }
 /* Тоталы «больше» (и «меньше» при проигрыше) определяются ещё до конца матча: голы, карточки и угловые только прибавляются */
 function evalEarly(p, t){
-  const mm = String(p.market).match(/^(ТБ|ТМ)\(/); if (!mm) return null;
-  const r = evalPred(p, t);
-  if (mm[1] === 'ТБ' && r === 'won') return 'won';
-  if (mm[1] === 'ТМ' && r === 'lost') return 'lost';
+  const k = String(p.market);
+  if (k === 'ОЗ да' || k === 'ОЗ нет'){ const r = evalPred(p, t); return (k === 'ОЗ да' && r === 'won') || (k === 'ОЗ нет' && r === 'lost') ? r : null; }
+  const mm = k.match(/^(ТБ|ТМ|ИТ1Б|ИТ1М|ИТ2Б|ИТ2М)\(/); if (!mm) return null;
+  const r = evalPred(p, t), over = /Б$/.test(mm[1]);
+  if (over && r === 'won') return 'won';
+  if (!over && r === 'lost') return 'lost';
   return null;
 }
 function explainPred(p){
@@ -3502,9 +3537,11 @@ function explainPred(p){
   if (p.early) return `${p.sub ? '«' + p.sub + '»: ' : ''}условие выполнено уже при счёте ${p.final} → ${verdict}${src}`;
   const sc = p.sub ? `«${p.sub}»: ${a}:${b}` : `итог ${t1} ${a}:${b} ${t2}`;
   const win = a > b ? `победил ${t1}` : b > a ? `победил ${t2}` : 'ничья';
-  const mm = k.match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/);
+  const mm = k.match(/^(Ф1|Ф2|ТБ|ТМ)\((.*)\)$/), mi = k.match(/^ИТ([12])([БМ])\((.*)\)$/);
   let why = '';
   if (/^(П1|П2|X|1X|X2|12)$/.test(k)) why = p.sub ? '' : win;
+  else if (/^ОЗ /.test(k)) why = a > 0 && b > 0 ? 'обе команды забили' : 'забила не каждая команда';
+  else if (mi) why = `${mi[1] === '1' ? t1 : t2} забил(а) ${mi[1] === '1' ? a : b}, линия ${mi[3]} (${mi[2] === 'Б' ? 'нужно больше' : 'нужно меньше'})`;
   else if (mm && (mm[1] === 'ТБ' || mm[1] === 'ТМ')) why = `всего ${a + b}, линия ${mm[2]} (${mm[1] === 'ТБ' ? 'нужно больше' : 'нужно меньше'})`;
   else if (mm){ const h = parseFloat(String(mm[2]).replace(',', '.')); why = `с форой ${mm[2]} счёт ${+(mm[1] === 'Ф1' ? a + h : a).toFixed(2)}:${+(mm[1] === 'Ф1' ? b : b + h).toFixed(2)}`; }
   return `${sc}${why ? ' — ' + why : ''} → ${verdict}${src}`;
