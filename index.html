@@ -22,6 +22,7 @@ body{background:var(--bg);color:var(--text);padding:12px;max-width:900px;margin:
 .btn-check{margin-top:6px;width:100%;background:transparent;color:var(--accent);border:1px solid var(--accent);padding:6px;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer}
 .key-status{font-size:11.5px;margin-top:5px;line-height:1.35;word-break:break-word}
 .ok{color:var(--accent)}.bad{color:var(--red)}.good{color:var(--accent)}.muted{color:var(--muted)}
+.ai-tag{display:inline-block;font-size:11px;color:#d1b3ff;border:1px solid rgba(179,136,255,.45);background:rgba(179,136,255,.08);border-radius:6px;padding:2px 7px;margin:3px 0 5px;line-height:1.45}
 .stake-box{display:inline-flex;align-items:center;gap:4px;font-size:12px;flex-wrap:wrap}
 .stake-in{width:84px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 7px;border-radius:6px;font-size:13px}
 .stake-win{color:var(--accent);font-weight:600}.money{font-size:12px}.money.good{color:var(--accent)}.money.bad{color:var(--red)}
@@ -1075,7 +1076,7 @@ function myBetsBox(m){
   const mine = preds.filter(p => p.mid === String(m.id) && (p.src === 'express' || !p.virtual));
   if (!mine.length) return '';
   return `<div class="ai-box"><div class="ai-legend">⭐ Мои ставки на этот матч (слежу автоматически)</div><div class="tl">${liveLine({ mid: String(m.id) })}</div>` + mine.map(p =>
-    `<div class="bet ${p.risk}"><div class="bet-top"><b>${p.src === 'express' ? '🎯 ' : '⭐ '}${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b><span class="bet-who">→ ${esc(p.desc)}</span><span class="bet-odd">кэф ${esc(p.odd)}</span></div><div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.src !== 'express' ? moneyLine(p) : ''}</div>${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}</div>`).join('') + `</div>`;
+    `<div class="bet ${p.risk}"><div class="bet-top"><b>${p.src === 'express' ? '🎯 ' : '⭐ '}${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b><span class="bet-who">→ ${esc(p.desc)}</span><span class="bet-odd">кэф ${esc(p.odd)}</span></div>${p.src !== 'express' ? aiTagHtml(p) : ''}<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.src !== 'express' ? moneyLine(p) : ''}</div>${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}</div>`).join('') + `</div>`;
 }
 
 function renderDetails(m){
@@ -1465,7 +1466,7 @@ async function callGemini(promptText){
   const out = $('aiOutput');
   out.textContent = `⏳ ${aiName()}: отправка запроса...`;
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  try { out.textContent = (await aiRequest(promptText, {})).text; } catch (err){ out.textContent = err.message; }
+  try { const r = await aiRequest(promptText, {}); out.textContent = `🏷 ИИ: ${aiName(r.prov)} · модель ${r.model}\n\n${r.text}`; } catch (err){ out.textContent = err.message; }
 }
 
 /* ---------- настройки ключей: сворачиваемые блоки, «+ ключ», проверка ---------- */
@@ -1708,7 +1709,7 @@ function aiBox(m){
   if (r.state === 'loading') return `<div class="ai-box"><div class="log">⏳ ${esc(r.stage || aiName() + ' анализирует матч...')}</div></div>`;
   if (r.state === 'error') return `<div class="ai-box"><div class="bad">${esc(r.text)}</div><button class="btn-more" data-act="reanalyze">🔄 Повторить</button></div>`;
   const d = r.data;
-  let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная (подсвечены и в таблицах коэффициентов)</div>`;
+  let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная (подсвечены и в таблицах коэффициентов)</div>${aiTagHtml(r)}`;
   if (d && d.summary) h += `<div class="ai-sum">${esc(d.summary)}</div>`;
   h += factsHtml(r, d);
   if (d && Array.isArray(d.bets) && d.bets.length){
@@ -1808,8 +1809,18 @@ function calibrationHtml(ps){
   return `<div class="bd"><b>Честность вероятностей ИИ</b>${rows}<div class="hint" style="text-align:left">Если «сбылось» заметно ниже заявленного, ИИ слишком самоуверен.</div></div>`;
 }
 const betOpen = new Set();
-const MODE_LBL = { math: '📐 Только математика (без ИИ)', quick: '⚡ Быстрый анализ', deep: '🧠 Глубокий анализ (разведка в интернете)', max: '🏆 Максимум (разведка, два расчёта, критик)' };
+const MODE_LBL = { math: '📐 Только математика (без ИИ)', quick: '⚡ Быстрый анализ', deep: '🧠 Глубокий анализ (разведка в интернете)', max: '🏆 Максимум (разведка, два расчёта, критик)', express: '🎯 Сборка экспресса', top: '🔥 Подбор лучших ставок' };
 const modeLabel = m => MODE_LBL[m] || (m ? String(m) : '');
+/* пометка: каким ИИ, какой моделью и в каком режиме сделан прогноз */
+function aiTagHtml(o){
+  if (!o) return '';
+  const parts = [], mode = o.mode || o.aiMode, prov = o.prov || o.aiProv, model = o.model || o.aiModel, sp = o.scoutProv || o.sProv, sm = o.scoutModel || o.sModel;
+  if (mode) parts.push('Режим: ' + modeLabel(mode));
+  if (prov) parts.push(`ИИ: ${aiName(prov)}${model ? ' · модель ' + model : ''}`);
+  else if (mode === 'math') parts.push('ИИ не использовался');
+  if (sp && (sp !== prov || sm !== model)) parts.push(`разведка: ${aiName(sp)}${sm ? ' · ' + sm : ''}`);
+  return parts.length ? `<div class="ai-tag">🏷 ${parts.map(esc).join(' · ')}</div>` : '';
+}
 function rationaleHtml(c){
   const nl = t => esc(t).replace(/\n/g, '<br>');
   let h = `<div class="bd-h">📖 Полное обоснование: ${esc(c.title || '')}${c.who ? ' → ' + esc(c.who) : ''}</div>`;
@@ -2567,7 +2578,7 @@ async function analyzeSingleMatch(id, force){
     finalizeBets(m, data, M, critic);
     if (!data.bets.length && !(data.dropped || []).length) throw new Error('⚠️ ИИ не предложил ни одной ставки. ' + (data.no_bet_reason || 'Нажмите «Пересчитать».'));
     aiResults[id] = { state: 'done', raw: JSON.stringify(data), data, at: Date.now(), score: m.score, mode, prov, model, notes, critic,
-      sources: (scout && scout.sources) || [], scoutAt: scout ? scout.at : 0, scoutCached: !!(scout && scout.cached), scout: scout && scout.data ? scout.data : null,
+      sources: (scout && scout.sources) || [], scoutAt: scout ? scout.at : 0, scoutProv: (scout && scout.prov) || '', scoutModel: (scout && scout.model) || '', scoutCached: !!(scout && scout.cached), scout: scout && scout.data ? scout.data : null,
       ctx: { weather: weatherText(W), afb: afb ? afbText(afb) : '', move: movementText(m), model: M ? M.notes.join(' ') : '', fb: F ? ssisText(F, m) : '' } };
     const A = recordAnalysis(m); if (A) aiResults[id].aid = A.aid;
   } catch (err){ aiResults[id] = { state: 'error', text: err.message }; }
@@ -3068,7 +3079,7 @@ function renderExpressResult(){
   if (!r){ el.innerHTML = ''; return; }
   if (r.state === 'loading'){ el.innerHTML = `<div class="ai-box"><div class="log">⏳ ${esc(aiName())} собирает экспресс...</div></div>`; return; }
   if (r.state === 'error'){ el.innerHTML = `<div class="ai-box"><div class="bad">${esc(r.text)}</div></div>`; return; }
-  let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная</div>`;
+  let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная</div>${aiTagHtml(r)}`;
   if (r.summary) h += `<div class="ai-sum">${esc(r.summary)}</div>`;
   h += `<div class="ex-total">Экспресс из ${r.legs.length} событий · общий кэф ≈ <b>${r.total.toFixed(2)}</b></div>`;
   if (r.X) h += `<div class="why">По модели (рынок + статистика): шанс пройти целиком ≈ <b>${(r.X.prob * 100).toFixed(1)}%</b> · честный кэф ≈ ${r.X.fair.toFixed(2)} против ${r.total.toFixed(2)} у Фонбета · <span style="color:${r.X.ev >= 0 ? 'var(--accent)' : 'var(--red)'}">выгода ${r.X.ev >= 0 ? '+' : ''}${Math.round(r.X.ev * 100)}%</span>${r.X.ev < 0 ? '. Минус — это маржа букмекера, умноженная на число событий: чем длиннее экспресс, тем она больше.' : ''}</div>`;
@@ -3092,7 +3103,7 @@ function confirmExpress(){
   r.total = r.legs.reduce((a, l) => a * l.odd, 1);
   const X = expressMath(r.legs);
   const ex = saveExpress(r.legs, r.summary, r.total);
-  ex.stake = stake; if (X){ ex.prob = X.prob; ex.ev = X.ev; r.X = X; }
+  ex.stake = stake; ex.prov = r.prov || ''; ex.model = r.model || ''; ex.mode = 'express'; if (X){ ex.prob = X.prob; ex.ev = X.ev; r.X = X; }
   saveStore(); renderStats();
   r.saved = ex.eid; r.stake = stake; delete stakeDraft['exp:new'];
   renderExpressResult();
@@ -3116,7 +3127,8 @@ async function buildExpress(){
   const lines = list.map(m => `[id=${m.id}] ${m.league} | ${m.team1} — ${m.team2} | ${m.status === 'live' ? 'LIVE ' + fmtTimer(m, false) + ', счёт ' + m.score : 'начало ' + fmtStart(m)} | коэф: ${JSON.stringify(Object.fromEntries(Object.entries(m.odds).slice(0, 12)))}${(() => { const x = expHint(m); return x ? ' | модель: ' + x : ''; })()}`).join('\n');
   const prompt = `Собери экспресс из ${n} событий. ${auto ? 'Выбери из списка РОВНО ' + n + ' событий' : 'Используй ВСЕ ' + n + ' событий из списка'}, для каждого дай ОДНУ ставку: наиболее вероятный и нерискованный исход (market — точное название из коэффициентов этого события, например П1, X, П2, Ф1(0), ТБ(2.5)). Разрешённые уровни риска ставок: ${allowedRisk.join(', ')} (low — надёжная, medium — средний риск, high — рискованная). ${auto ? 'Выбирай ТОЛЬКО ставки этих уровней; если для события такой ставки нет, не включай его.' : 'По возможности выбирай ставки этих уровней.'}\nУ событий указаны вероятности модели программы (рынок + статистика) и выгода: предпочитай исходы с высокой вероятностью и неотрицательной выгодой, не бери два события, которые зависят друг от друга.\nСобытия:\n${lines}\n\nОтветь ТОЛЬКО JSON: {"summary":"1-2 предложения о логике экспресса","legs":[{"id":число из списка,"market":"...","risk":"low|medium|high","reason":"кратко, называй команды по названию, а не П1/П2"}]}. Русский язык.`;
   try {
-    const d = parseBets(await geminiRequest(prompt, true));
+    const rr = await aiRequest(prompt, { json: true });
+    const d = parseBets(rr.text);
     const seen = new Set(), legs = [];
     (d && Array.isArray(d.legs) ? d.legs : []).forEach(l => {
       const m = matchById[String(l.id)]; if (!m || seen.has(String(m.id))) return;
@@ -3131,7 +3143,7 @@ async function buildExpress(){
     if (!used.length) throw new Error(legs.length ? '⚠️ ИИ предложил ставки только другого уровня риска. Разрешите больше уровней риска или повторите.' : '⚠️ ИИ не вернул распознаваемых ставок. Попробуйте ещё раз.');
     const total = used.reduce((p, l) => p * l.odd, 1);
     const X = expressMath(used);
-    expResult = { state:'done', legs: used, total, summary: (d && d.summary) || '', at: Date.now(), X, saved: null };
+    expResult = { state:'done', legs: used, total, summary: (d && d.summary) || '', at: Date.now(), X, saved: null, prov: rr.prov, model: rr.model, mode: 'express' };
   } catch (err){ expResult = { state:'error', text: err.message }; }
   renderExpressResult();
 }
@@ -3374,6 +3386,7 @@ function makePred(m, o){
   return { pid: uid('p'), src: o.src, mid: String(m.id), sk: m.sportKey, ms: m.start || 0, t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon,
     market: o.market, sub: o.sub || '', risk: o.risk, odd: o.odd, prob: o.prob || null, desc: o.desc || '', reason: o.reason || '',
     pAI: o.pAI ?? null, pbase: o.pbase ?? null, pm: o.pm ?? null, pf: o.pf ?? null, ev: o.ev ?? null,
+    aiProv: o.aiProv || '', aiModel: o.aiModel || '', aiMode: o.aiMode || '', sProv: o.sProv || '', sModel: o.sModel || '',
     at: Date.now(), state: o.key ? 'pending' : 'unknown', note: o.key ? '' : 'ставка не распознана — отметьте вручную' };
 }
 function saveExpress(legs, summary, total){
@@ -3466,7 +3479,7 @@ function backfillMonitoring(byId){
     const m = byId[A.mid]; if (!m || m.status === 'finished') return;
     A.bets.forEach(b => {
       if (b.pid && preds.some(p => p.pid === b.pid)) return;
-      const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason, prob: b.prob, pAI: b.pAI, pbase: b.pbase, pm: b.pm, pf: b.pf, ev: b.ev });
+      const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason, prob: b.prob, pAI: b.pAI, pbase: b.pbase, pm: b.pm, pf: b.pf, ev: b.ev, aiProv: A.prov, aiModel: A.model, aiMode: A.mode, sProv: A.scoutProv, sModel: A.scoutModel });
       p.aid = A.aid; p.virtual = true; preds.push(p); b.pid = p.pid;
     });
   });
@@ -3513,14 +3526,15 @@ function recordAnalysis(m){
   const A = { aid: uid('a'), mid: String(m.id), t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon, at: Date.now(), score: m.score, ms: m.start || 0,
     summary: (r && r.data && r.data.summary) || '', facts: (r && r.data && Array.isArray(r.data.facts)) ? r.data.facts.slice(0, 8).map(String) : [], lineups: (r && r.data && r.data.lineups) || null,
     players: (r && r.data && Array.isArray(r.data.key_players)) ? r.data.key_players.slice(0, 16) : [], quality: (r && r.data && r.data.data_quality) || '', mode: (r && r.mode) || '', sources: ((r && r.sources) || []).slice(0, 8),
-    prov: (r && r.prov) || '', model: (r && r.model) || '', notes: (r && r.notes) || [], ctx: null, criticNote: (r && r.critic && r.critic.notes) || '', bets: [], timeline: [{ t: Date.now(), min: m.status === 'live' ? fmtTimer(m, false) : '', score: m.score }], final: null, ended: null };
+    prov: (r && r.prov) || '', model: (r && r.model) || '', scoutProv: (r && r.scoutProv) || '', scoutModel: (r && r.scoutModel) || '', notes: (r && r.notes) || [], ctx: null, criticNote: (r && r.critic && r.critic.notes) || '', bets: [], timeline: [{ t: Date.now(), min: m.status === 'live' ? fmtTimer(m, false) : '', score: m.score }], final: null, ended: null };
   es.forEach(e => {
     const sb = e.sub >= 0 ? m.subs[e.sub] : null;
     const b = { market: e.key || String(e.b.market || ''), key: e.key, sub: sb ? sb.name : '', risk: e.risk,
       odd: e.key ? Number(sb ? sb.odds[e.key] : m.odds[e.key]) : (Number(e.b.odds) || 0), desc: betWho(m, e), reason: e.b.reason || '', pid: null, detail: String(e.b.detail || ''),
       prob: Number(e.b.prob) || null, mkt: (e.key && !sb) ? marketProb(m, e.key) : null,
       pm: e.b.pm ?? null, pmod: e.b.pmod ?? null, pAI: e.b.pAI ?? null, pbase: e.b.pbase ?? null, pf: e.b.pf ?? null, ev: e.b.ev ?? null, kelly: e.b.kelly ?? null, adj: e.b.adj || [], critic: e.b.critic || '', alpha: e.b.alpha, value: e.b.value };
-    const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason, prob: b.prob, pAI: b.pAI, pbase: b.pbase, pm: b.pm, pf: b.pf, ev: b.ev });
+    const p = makePred(m, { src: 'single', market: b.market, key: b.key, sub: b.sub, odd: b.odd, risk: b.risk, desc: b.desc, reason: b.reason, prob: b.prob, pAI: b.pAI, pbase: b.pbase, pm: b.pm, pf: b.pf, ev: b.ev,
+      aiProv: A.prov, aiModel: A.model, aiMode: A.mode, sProv: A.scoutProv, sModel: A.scoutModel });
     p.aid = A.aid; p.virtual = true; preds.push(p); b.pid = p.pid; A.bets.push(b);
   });
   analyses.push(A); saveStore(); renderStats();
@@ -3596,6 +3610,7 @@ function analysisCard(A){
   const tl = (A.timeline || []).map(x => `${x.min ? x.min + ' ' : ''}<b>${esc(x.score)}</b>`).join(' → ');
   let h = `<div class="hx"><div class="hx-head" data-omid="${esc(A.mid)}"><b>${A.icon || ''} ${esc(A.t1)} — ${esc(A.t2)} <span class="open-hint">· открыть ›</span></b><span class="hx-sub" style="margin:0">${hasMine ? `⭐ Мои ставки: ${mine.length} · ` : ''}${fmtDT(A.at)}</span></div>
     <div class="hx-sub">${esc(A.league)} · сейчас: ${liveLine({ mid: A.mid, final: A.final, ms: A.ms })}</div>
+    ${aiTagHtml(A)}
     ${pending ? '<div class="mon">👁 Слежу за матчем автоматически</div>' : ''}
     ${A.recheck ? `<div class="hx-n">${esc(A.recheck)}</div>` : ''}
     ${!hasMine && A.summary ? `<div class="ai-sum">${esc(A.summary)}</div>` : ''}
@@ -3956,7 +3971,7 @@ function applyScore(mid, a, b, via){
 }
 function legHtml(p){
   return `<div class="hx-leg ${p.state}" data-omid="${esc(p.mid)}"><div class="hx-m">${p.icon || ''} ${esc(p.t1)} — ${esc(p.t2)} <span class="open-hint">· открыть ›</span></div>
-    <div class="hx-b"><b>${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b> → ${esc(p.desc)} · кэф ${esc(p.odd)} · ${RISK[p.risk] || ''}</div>
+    <div class="hx-b"><b>${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b> → ${esc(p.desc)} · кэф ${esc(p.odd)} · ${RISK[p.risk] || ''}</div>${p.src !== 'express' ? aiTagHtml(p) : ''}
     <div class="hx-l">${liveLine(p)} <span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div>${p.src !== 'express' && !p.virtual ? `<div class="hx-l">${moneyLine(p)}</div>` : ''}
     ${p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}${p.state !== 'pending' ? `<details class="man"><summary>Исправить вручную</summary>${manualBtns(p)}</details>` : ''}</div>`;
 }
@@ -3966,6 +3981,7 @@ function expCard(ex, pm, no){
   const odds = legs.filter(l => l.state !== 'void').reduce((a, l) => a * (Number(l.odd) || 1), 1);
   const BADGE = { won:'✅ ЗАШЁЛ', lost:'❌ НЕ ЗАШЁЛ', pending:'⏳ В игре', unknown:'⚠️ Итог не получен', void:'↩️ Возврат' };
   return `<div class="hx ${st}"><div class="hx-head"><b>Экспресс #${no} · ${legs.length} ${plural(legs.length, 'событие', 'события', 'событий')} · ${fmtDT(ex.at)}</b><span class="hx-badge">${BADGE[st]}</span></div>
+    ${aiTagHtml(ex)}
     <div class="hx-sub">Общий кэф ≈ ${odds.toFixed(2)}${ex.prob ? ` · шанс по модели ≈ ${(ex.prob * 100).toFixed(1)}%` : ''}${legs.filter(l => l.state === 'won').length ? ` · зашло ${legs.filter(l => l.state === 'won').length} из ${legs.length}` : ''}</div>
     <div class="cf-row">${(() => { const M = expMoney(ex, pm); if (!M) return st === 'pending' ? stakeCtl('ex:' + ex.eid, odds.toFixed(2), '') + ' <span class="hx-n">укажите сумму</span>' : '<span class="hx-n">сумма не указана</span>'; if (M.pending) return stakeCtl('ex:' + ex.eid, odds.toFixed(2), ex.stake); return `<span class="money ${M.profit > 0 ? 'good' : M.profit < 0 ? 'bad' : ''}">💰 ${rub(M.stake)} · ${M.profit > 0.004 ? 'выигрыш ' + rub(M.ret) + ' (' + sgnRub(M.profit) + ')' : M.profit < -0.004 ? sgnRub(M.profit) : 'возврат ' + rub(M.ret)}</span>`; })()}</div>
     ${lost.length ? `<div class="hx-lost">❌ Не зашло (${lost.length}):<br>${lost.map(l => '• ' + esc(l.t1 + ' — ' + l.t2 + ': ставка ' + l.market + ' (' + (l.desc || '') + '). ' + (explainPred(l) || ''))).join('<br>')}</div>` : ''}
