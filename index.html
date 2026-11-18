@@ -342,7 +342,7 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
         <option value="max">🏆 Максимум: разведчик + аналитик дважды + критик (4–5 запросов)</option>
       </select>
       <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-top:8px"><input type="checkbox" id="detailChk" checked style="margin-top:3px"><span>📖 Полное обоснование по нажатию на ставку (ИИ пишет больше текста; выключите, чтобы тратить меньше токенов)</span></label>
-      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-top:8px"><input type="checkbox" id="scoutOtherChk" checked style="margin-top:3px"><span>🔎 Разведка в интернете через другой ИИ, если выбранный не умеет искать (например, DeepSeek). Выключите, чтобы всё делал только выбранный ИИ, а разведка пропускалась. ИИ с исчерпанным лимитом пропускается сам.</span></label>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-top:8px"><input type="checkbox" id="scoutOtherChk" style="margin-top:3px"><span>🔎 Разведка в интернете через другой ИИ, если выбранный не умеет искать (например, DeepSeek). По умолчанию выключено: тогда всё делает только выбранный ИИ, а разведка пропускается. Включите, если нужен поиск составов и новостей через Gemini, Qwen или Claude. ИИ с исчерпанным лимитом пропускается сам.</span></label>
       <div class="input-group" style="margin-top:8px"><label>🎯 Экспресс: для скольких событий делать разведку в интернете и запросы API-Football:</label>
         <select id="scoutN" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px">
           <option value="">По умолчанию (авто: до 8 лучших, ручной выбор: до 12)</option><option value="4">До 4 лучших событий</option><option value="8">До 8 лучших событий</option><option value="12">До 12 лучших событий</option><option value="20">До 20 лучших событий</option><option value="0">Без лимита: все события экспресса</option>
@@ -1281,7 +1281,7 @@ const kOpen = new Set(), kShow = new Set();
 
 function loadAi(){
   const get = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v === null || v === undefined ? d : v; } catch (e){ return d; } };
-  aiCfg = Object.assign({ prov:'gemini', fallback:false, base:{}, model:{}, useAfb:true, scoutOther:true, scoutN:null }, get('fb_ai', {}));
+  aiCfg = Object.assign({ prov:'gemini', fallback:false, base:{}, model:{}, useAfb:true, scoutOther:false, scoutN:null }, get('fb_ai', {}));
   aiCfg.base = aiCfg.base || {}; aiCfg.model = aiCfg.model || {};
   aiKeys = get('fb_ai_keys', null); aiIdx = get('fb_ai_idx', {}) || {};
   if (!aiKeys || typeof aiKeys !== 'object'){
@@ -1302,6 +1302,16 @@ function loadAi(){
   });
   if (!PROV[aiCfg.prov] || PROV[aiCfg.prov].data) aiCfg.prov = 'gemini';
   kOpen.add(aiCfg.prov); kOpen.add('apifb');
+  /* статусы ключей (лимит / недействителен) переживают перезагрузку: ключ узнаём по последним 6 символам */
+  const inf = get('fb_ai_info', {}) || {};
+  Object.keys(PROV).forEach(p => { if (Array.isArray(inf[p])) inf[p].forEach(x => { if (!x || !x.kf) return; const i = aiKeys[p].findIndex(k => k && k.slice(-6) === x.kf); if (i >= 0) aiInfo[p][i] = x; }); });
+  if (!aiCfg.mig2){ aiCfg.scoutOther = false; aiCfg.mig2 = true; saveAi(); }   // однократно: разведка через другой ИИ по умолчанию выключена
+}
+function saveKeyInfo(){
+  try {
+    const o = {}; Object.keys(aiInfo).forEach(p => { o[p] = (aiInfo[p] || []).map((x, i) => x && aiKeys[p] && aiKeys[p][i] && ['limit', 'bad', 'ok'].includes(x.state) ? Object.assign({}, x, { kf: aiKeys[p][i].slice(-6) }) : null); });
+    localStorage.setItem('fb_ai_info', JSON.stringify(o));
+  } catch (e){}
 }
 function saveAi(){
   if (typeof importLock !== 'undefined' && importLock) return;
@@ -1309,6 +1319,7 @@ function saveAi(){
     localStorage.setItem('fb_ai', JSON.stringify(aiCfg));
     localStorage.setItem('fb_ai_keys', JSON.stringify(aiKeys));
     localStorage.setItem('fb_ai_idx', JSON.stringify(aiIdx));
+    saveKeyInfo();
   } catch (e){}
 }
 const aiName = (p = aiCfg.prov) => PROV[p] ? PROV[p].name : p;
@@ -1350,7 +1361,7 @@ function classifyKeyErr(p, status, data){
       (status === 400 && /api key|API_KEY_INVALID|key not valid|key expired|invalid.{0,12}key/i.test(msg))) return 'bad';
   return null;
 }
-function setKeyInfo(p, i, state, msg, until, extra){ aiInfo[p][i] = Object.assign({ state, msg, until: until || 0, at: Date.now() }, extra || {}); paintKeyBlock(p); }
+function setKeyInfo(p, i, state, msg, until, extra){ aiInfo[p][i] = Object.assign({ state, msg, until: until || 0, at: Date.now() }, extra || {}); saveKeyInfo(); paintKeyBlock(p); }
 /* когда восстановится лимит: по подсказке сервиса (retry in …), иначе по суточному сбросу (Gemini: полночь по тихоокеанскому времени) */
 function pacificMidnight(now){
   try {
@@ -1538,7 +1549,7 @@ function provUsable(p){
 /* ИИ для поиска в интернете: выбранный, если умеет искать; иначе (если разрешено в настройках) другой рабочий ИИ с поиском */
 function searchProv(){
   if (PROV[aiCfg.prov].search && provHasKeys(aiCfg.prov)) return aiCfg.prov;
-  if (aiCfg.scoutOther === false) return null;
+  if (aiCfg.scoutOther !== true) return null;
   return AI_LIST.find(p => p !== aiCfg.prov && PROV[p].search && provUsable(p) && modelOf(p)) || null;
 }
 const scoutName = () => { const p = searchProv(); return p ? aiName(p) : 'выключен'; };
@@ -1678,7 +1689,7 @@ function initAiSettings(){
   $('afbUse').addEventListener('change', () => { aiCfg.useAfb = $('afbUse').checked; saveAi(); updAnHint(); });
   $('scoutN').value = aiCfg.scoutN === null || aiCfg.scoutN === undefined ? '' : String(aiCfg.scoutN);
   $('scoutN').addEventListener('change', () => { const v = $('scoutN').value; aiCfg.scoutN = v === '' ? null : Number(v); saveAi(); });
-  $('scoutOtherChk').checked = aiCfg.scoutOther !== false;
+  $('scoutOtherChk').checked = aiCfg.scoutOther === true;
   $('scoutOtherChk').addEventListener('change', () => { aiCfg.scoutOther = $('scoutOtherChk').checked; saveAi(); updAnHint(); });
   $('aiFallback').checked = !!aiCfg.fallback;
   $('aiFallback').addEventListener('change', () => { aiCfg.fallback = $('aiFallback').checked; saveAi(); });
@@ -2639,7 +2650,7 @@ async function runScout(m, force){
   const c = scoutCache[m.id];
   if (!force && c && Date.now() - c.at < scoutTTL(m)) return Object.assign({ cached: true }, c);
   const p = searchProv();
-  if (!p) return { data: null, sources: [], note: !PROV[aiCfg.prov].search && aiCfg.scoutOther === false ? `Разведка в интернете выключена в настройках (у ${aiName()} нет поиска).` : `Разведка в интернете пропущена: у ${aiName()} нет поиска, а другого рабочего ИИ с поиском нет (нет ключа или лимит исчерпан).` };
+  if (!p) return { data: null, sources: [], note: !PROV[aiCfg.prov].search && aiCfg.scoutOther !== true ? `Разведка в интернете выключена в настройках (у ${aiName()} нет поиска).` : `Разведка в интернете пропущена: у ${aiName()} нет поиска, а другого рабочего ИИ с поиском нет (нет ключа или лимит исчерпан).` };
   const r = await aiRequest(buildScoutPrompt(m), { search: true, prov: p, temp: 0.2, maxTokens: 5000 });
   const rec = { at: Date.now(), data: parseBets(r.text), sources: (r.sources || []).slice(0, 12), prov: r.prov, model: r.model };
   if (!rec.data) rec.note = 'Разведчик ответил не в формате JSON: факты не разобраны.';
@@ -4420,7 +4431,7 @@ function applyFound(mid, a, b){
 async function resolveViaSearch(force){
   if (searchBusy || searchOff) return;
   const sp = searchProv();
-  if (!sp){ if (force) toast('Нужен ИИ с поиском в интернете (Gemini, Qwen или Claude) с ключом в ⚙️'); return; }
+  if (!sp){ if (force) toast('Нужен ИИ с поиском в интернете (Gemini, Qwen или Claude). Выберите его или включите «Разведка через другой ИИ» в ⚙️ → Анализ и ставки'); return; }
   const todo = eligibleUnknown(force).filter(p => force || !p.srchAt || Date.now() - p.srchAt > 30 * 60 * 1000);
   const mids = [...new Set(todo.map(p => p.mid))].slice(0, 6);
   if (!mids.length){ if (force) toast('Нечего проверять'); return; }
@@ -4682,4 +4693,4 @@ async function analyzeTopLine(scope){
 
 </script>
 </body>
-</html>
+  </html>
