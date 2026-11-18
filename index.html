@@ -2921,15 +2921,33 @@ function moneyPanel(title, o){
     <div class="mp-c"><small>Вернулось от поставленного</small><b>${o.retPct === null ? '—' : Math.round(o.retPct * 100) + '%'}</b></div></div>
     <div class="mp-s">Ставок с суммой: ${o.n} · зашло ${o.nWon}${o.hitPct !== null ? ` (${Math.round(o.hitPct * 100)}%)` : ''} · не зашло ${o.nLost}${o.nVoid ? ' · возвратов ' + o.nVoid : ''} · всего вернулось ${rub(o.ret)}${o.n ? ` · средняя ставка ${rub(o.avgStake)}` : ''}${o.maxWin ? ` · крупнейший выигрыш +${rub(o.maxWin)}` : ''}${o.maxLoss ? ` · крупнейший проигрыш −${rub(o.maxLoss)}` : ''}${o.np ? `<br>⏳ В игре: ${o.np} на ${rub(o.inPlay)} → возможный выигрыш ${rub(o.potential)}` : ''}</div></div>`;
 }
-function stakeCtl(key, odd, val){
+/* итог по сыгравшей ставке: s — сумма, k — множитель возврата (0 — проигрыш, 1 — возврат, кэф — выигрыш) */
+function resTxt(s, k){
+  if (!(s > 0) || k === null || k === undefined || isNaN(k)) return '';
+  const pr = s * k - s;
+  return pr > 0.004 ? ` · ✅ получено ${rub(s * k)} (${sgnRub(pr)})` : pr < -0.004 ? ` · ❌ потеря ${sgnRub(pr)}` : ` · ↩️ возврат ${rub(s)}`;
+}
+function expMult(ex, pm){
+  const legs = ex.legs.map(id => pm.get(id)).filter(Boolean), ms = legs.map(predMult);
+  if (ms.some(x => x === 0)) return 0;
+  if (ms.some(x => x === null)) return null;
+  return ms.reduce((a, x) => a * x, 1);
+}
+function stakeCtl(key, odd, val, mult){
   const v = stakeDraft[key] !== undefined ? stakeDraft[key] : (val || stakeDef());
   const w = Number(v) > 0 && Number(odd) > 0 ? rub(Number(v) * Number(odd)) : '—';
-  return `<span class="stake-box">💰 <input class="stake-in" type="number" inputmode="decimal" min="1" step="any" data-sk="${esc(key)}" data-odd="${esc(odd)}" value="${esc(v)}"> ₽ <span class="stake-win" data-sk="${esc(key)}">→ выигрыш ${w}</span></span>`;
+  const fin = mult !== undefined && mult !== null;
+  const res = fin ? `<span class="stake-res" data-sk="${esc(key)}">${esc(resTxt(Number(v), mult))}</span>` : '';
+  return `<span class="stake-box">💰 <input class="stake-in" type="number" inputmode="decimal" min="1" step="any" data-sk="${esc(key)}" data-odd="${esc(odd)}"${fin ? ` data-mult="${esc(mult)}"` : ''} value="${esc(v)}"> ₽ <span class="stake-win" data-sk="${esc(key)}">→ выигрыш при победе ${w}</span>${res}</span>`;
+}
+/* ставка сыграна, а сумма не была сохранена: показываем поле с суммой, выигрышем и итогом, сумму можно ввести задним числом */
+function lateStakeCtl(key, odd, mult){
+  return stakeCtl(key, odd, '', mult) + ` <button class="cf-btn ghost" data-cact="savestake" data-sk="${esc(key)}">💾 Сохранить сумму</button><div class="hx-n">Сумма не была сохранена. Введите, сколько поставили: посчитаю выигрыш и итог.</div>`;
 }
 function moneyLine(p){
   const M = predMoney(p), odd = Number(p.odd) || 1;
   if (!M){
-    if (!p.virtual) return `<span class="hx-n">сумма не указана</span>`;
+    if (!p.virtual) return ['won', 'lost', 'void'].includes(p.state) ? lateStakeCtl('p:' + p.pid, odd, predMult(p)) : `<span class="hx-n">сумма не указана</span>`;
     if (['won', 'lost', 'void'].includes(p.state)){   // прогноз без ставки: показываем, что было бы при сумме по умолчанию
       const s = stakeDef(), k = predMult(p), pr = s * k - s;
       return `<span class="money muted">если бы поставили ${rub(s)} по кэф ${odd}: ${pr > 0.004 ? 'выигрыш ' + rub(s * k) + ' (' + sgnRub(pr) + ')' : pr < -0.004 ? 'проигрыш ' + sgnRub(pr) : 'возврат ' + rub(s)}</span>`;
@@ -2953,8 +2971,9 @@ function initStakes(){
     const inp = e.target.closest && e.target.closest('.stake-in'); if (!inp) return;
     const key = inp.dataset.sk, v = Number(inp.value), w = document.querySelectorAll(`.stake-win[data-sk="${window.CSS && CSS.escape ? CSS.escape(key) : key.replace(/"/g, '')}"]`);
     stakeDraft[key] = inp.value;
-    w.forEach(el => { el.textContent = '→ выигрыш ' + (v > 0 ? rub(v * Number(inp.dataset.odd)) : '—'); });
-    if (key.startsWith('p:')){ const p = preds.find(x => x.pid === key.slice(2)); if (p && p.state === 'pending' && v > 0){ p.stake = v; saveStoreSoon(); } }
+    w.forEach(el => { el.textContent = '→ выигрыш при победе ' + (v > 0 ? rub(v * Number(inp.dataset.odd)) : '—'); });
+    if (inp.dataset.mult !== undefined && inp.dataset.mult !== ''){ const k = Number(inp.dataset.mult); document.querySelectorAll(`.stake-res[data-sk="${window.CSS && CSS.escape ? CSS.escape(key) : key.replace(/"/g, '')}"]`).forEach(el => { el.textContent = resTxt(v, k); }); }
+    if (key.startsWith('p:')){ const p = preds.find(x => x.pid === key.slice(2)); if (p && v > 0){ p.stake = v; saveStoreSoon(); } }
     if (key.startsWith('ex:')){ const ex = exps.find(x => x.eid === key.slice(3)); if (ex && v > 0){ ex.stake = v; saveStoreSoon(); } }
   };
   document.addEventListener('input', onInput);
@@ -3851,16 +3870,33 @@ function betStateHtml(A, i, b){
   if (!p) return '';
   if (!p.virtual) return `<div class="cf-row"><span class="hx-st ${p.state}">⭐ ${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.state === 'pending' ? stakeCtl('p:' + p.pid, p.odd, p.stake) + (p.stake ? '' : ' <span class="hx-n">укажите сумму</span>') : moneyLine(p)}${p.state === 'pending' ? `<button class="cf-btn ghost" data-cact="cancel" data-aid="${esc(A.aid)}" data-i="${i}">Отменить</button>` : ''}</div>`;
   if (p.state === 'pending') return `<div class="cf-row">${stakeCtl('a:' + A.aid + '|' + i, b.odd)}<button class="cf-btn" data-cact="confirm" data-aid="${esc(A.aid)}" data-i="${i}">✅ Подтвердить ставку</button></div>`;
-  return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]} · без ставки</span>${moneyLine(p)}</div>`;
+  return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]} · без ставки</span>${moneyLine(p)}</div><div class="hx-n">${p.state === 'unknown' ? 'Ставка не распознана, подтвердить её нельзя.' : 'Событие уже определилось, поэтому подтвердить ставку нельзя.'}</div>`;
+}
+/* разбор матча → запись в «Анализ матча». Если запись потерялась (перезагрузка, пересчёт, смена линии), находим или создаём её заново, чтобы кнопка подтверждения не пропадала */
+function analysisFor(m){
+  const r = aiResults[m.id]; if (!r || r.state !== 'done') return null;
+  let A = r.aid ? analyses.find(a => a.aid === r.aid) : null;
+  if (!A){ A = analyses.filter(a => a.mid === String(m.id) && !a.ended).slice(-1)[0] || null; if (A) r.aid = A.aid; }
+  if (!A && !r.recTried){ r.recTried = true; try { A = recordAnalysis(m); if (A) r.aid = A.aid; } catch (e){} }
+  return A;
+}
+/* ставка из разбора находится по рынку, а не только по номеру: номера могут сдвинуться, если линия изменилась */
+function betForEntry(A, m, i){
+  const e = pickEntries(m)[i]; let b = A.bets[i];
+  if (e){
+    const sb = e.sub >= 0 ? m.subs[e.sub] : null, sbn = sb ? sb.name : '', mk = e.key || String(e.b.market || '');
+    if (!b || b.market !== mk || (b.sub || '') !== sbn) b = A.bets.find(x => x.market === mk && (x.sub || '') === sbn) || b;
+  }
+  return b || null;
 }
 function confirmCtl(m, i){
-  const r = aiResults[m.id], A = r && r.aid ? analyses.find(a => a.aid === r.aid) : null;
-  if (!A || !A.bets[i]) return '';
-  const b = A.bets[i], p = predOf(b), ex = p ? explainPred(p) : '';
-  return betStateHtml(A, i, b) + (ex ? `<div class="why">${esc(ex)}</div>` : '') + (p && p.note ? `<div class="hx-n">${esc(p.note)}</div>` : '');
+  const A = analysisFor(m); if (!A) return '';
+  const b = betForEntry(A, m, i); if (!b) return '';
+  const idx = A.bets.indexOf(b), p = predOf(b), ex = p ? explainPred(p) : '';
+  return betStateHtml(A, idx, b) + (ex ? `<div class="why">${esc(ex)}</div>` : '') + (p && p.note ? `<div class="hx-n">${esc(p.note)}</div>` : '');
 }
 function confirmAllCtl(m){
-  const r = aiResults[m.id], A = r && r.aid ? analyses.find(a => a.aid === r.aid) : null;
+  const A = analysisFor(m);
   if (!A || A.bets.length < 2 || !A.bets.some(b => { const p = predOf(b); return p && p.virtual && p.state === 'pending'; })) return '';
   return `<div class="cf-row"><button class="cf-btn" data-cact="all" data-aid="${esc(A.aid)}">✅ Подтвердить все ставки</button></div>`;
 }
@@ -3869,6 +3905,13 @@ function handleConfirm(b){
   if (c === 'confirm') confirmBet(aid, Number(b.dataset.i), false, readStake(b.closest('.cf-row'), 'a:' + aid + '|' + b.dataset.i));
   else if (c === 'all') confirmAll(aid);
   else if (c === 'cancel') cancelBet(aid, Number(b.dataset.i));
+  else if (c === 'savestake'){
+    const key = b.dataset.sk, v = Number(readStake(b.closest('.cf-row') || b.parentElement, key));
+    if (!(v > 0)){ toast('Введите сумму ставки'); return; }
+    if (key.startsWith('p:')){ const p = preds.find(x => x.pid === key.slice(2)); if (p) p.stake = v; }
+    else if (key.startsWith('ex:')){ const ex = exps.find(x => x.eid === key.slice(3)); if (ex) ex.stake = v; }
+    delete stakeDraft[key]; saveStore(); renderStats(); renderAll(); toast('💾 Сумма сохранена: ' + rub(v));
+  }
   else if (c === 'open') openMatchModal(b.dataset.mid);
   else if (c === 'del'){
     if (window.confirm && !window.confirm('Удалить анализ из списка? Уже подтверждённые ставки останутся в истории.')) return;
@@ -4293,7 +4336,7 @@ function expCard(ex, pm, no){
   return `<div class="hx ${st}"><div class="hx-head"><b>Экспресс #${no} · ${legs.length} ${plural(legs.length, 'событие', 'события', 'событий')} · ${fmtDT(ex.at)}</b><span class="hx-badge">${BADGE[st]}</span></div>
     ${aiTagHtml(ex)}
     <div class="hx-sub">Общий кэф ≈ ${odds.toFixed(2)}${ex.prob ? ` · шанс по модели ≈ ${(ex.prob * 100).toFixed(1)}%` : ''}${legs.filter(l => l.state === 'won').length ? ` · зашло ${legs.filter(l => l.state === 'won').length} из ${legs.length}` : ''}</div>
-    <div class="cf-row">${(() => { const M = expMoney(ex, pm); if (!M) return st === 'pending' ? stakeCtl('ex:' + ex.eid, odds.toFixed(2), '') + ' <span class="hx-n">укажите сумму</span>' : '<span class="hx-n">сумма не указана</span>'; if (M.pending) return stakeCtl('ex:' + ex.eid, odds.toFixed(2), ex.stake); return `<span class="money ${M.profit > 0 ? 'good' : M.profit < 0 ? 'bad' : ''}">💰 Ставка ${rub(M.stake)} · кэф ${(M.odds || odds).toFixed(2)} · выигрыш при победе ${rub(M.stake * (M.odds || odds))} → ${M.profit > 0.004 ? '✅ получено ' + rub(M.ret) + ' (' + sgnRub(M.profit) + ')' : M.profit < -0.004 ? '❌ потеря ' + sgnRub(M.profit) : '↩️ возврат ' + rub(M.ret)}</span>`; })()}</div>
+    <div class="cf-row">${(() => { const M = expMoney(ex, pm); if (!M) return st === 'pending' ? stakeCtl('ex:' + ex.eid, odds.toFixed(2), '') + ' <span class="hx-n">укажите сумму</span>' : (['won', 'lost', 'void'].includes(st) ? lateStakeCtl('ex:' + ex.eid, odds.toFixed(2), expMult(ex, pm)) : '<span class="hx-n">сумма не указана</span>'); if (M.pending) return stakeCtl('ex:' + ex.eid, odds.toFixed(2), ex.stake); return `<span class="money ${M.profit > 0 ? 'good' : M.profit < 0 ? 'bad' : ''}">💰 Ставка ${rub(M.stake)} · кэф ${(M.odds || odds).toFixed(2)} · выигрыш при победе ${rub(M.stake * (M.odds || odds))} → ${M.profit > 0.004 ? '✅ получено ' + rub(M.ret) + ' (' + sgnRub(M.profit) + ')' : M.profit < -0.004 ? '❌ потеря ' + sgnRub(M.profit) : '↩️ возврат ' + rub(M.ret)}</span>`; })()}</div>
     ${lost.length ? `<div class="hx-lost">❌ Не зашло (${lost.length}):<br>${lost.map(l => '• ' + esc(l.t1 + ' — ' + l.t2 + ': ставка ' + l.market + ' (' + (l.desc || '') + '). ' + (explainPred(l) || ''))).join('<br>')}</div>` : ''}
     ${legs.map(legHtml).join('')}<button class="hx-del" data-hact="delex" data-eid="${esc(ex.eid)}">🗑 Удалить</button></div>`;
 }
