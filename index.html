@@ -41,6 +41,7 @@ body{background:var(--bg);color:var(--text);padding:12px;max-width:900px;margin:
 .acc-bar span{display:block;height:100%;border-radius:4px}.acc-bar span.g{background:var(--accent)}.acc-bar span.r{background:var(--red)}.acc-bar span.y{background:#ffb74d}
 .acc-bar i{position:absolute;top:-3px;width:2px;height:13px;background:#000;border:1px solid #fff;border-radius:1px}
 .acc-sub{font-size:11.5px;color:var(--muted)}
+.btn-fb{display:inline-block;background:#e53935;color:#fff!important;text-decoration:none;font-weight:600;font-size:12px;border-radius:7px;padding:6px 10px;margin:4px 0}
 .btn-tv{display:block;text-align:center;background:#e53935;color:#fff;text-decoration:none;font-weight:700;border-radius:8px;padding:10px;margin:6px 0 8px}
 .stabs{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 10px}.stabs button{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:16px;padding:6px 10px;font-size:12px;cursor:pointer}
 .stabs button.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}.stab{display:none}.stab.on{display:block}
@@ -129,6 +130,20 @@ details.diag pre{white-space:pre-wrap;word-break:break-all;margin-top:6px;color:
 .ai-foot{font-size:11px;color:var(--muted);margin:6px 0}
 .odd-btn.pick-low{outline:2px solid var(--accent)}.odd-btn.pick-medium{outline:2px solid #ffb300}.odd-btn.pick-high{outline:2px solid var(--red)}
 .btn-analyze-match{margin-top:2px}.btn-analyze-match:disabled{opacity:.6}
+.btn-analyze-match.q-none{background:rgba(120,144,255,.12);color:#9fb0ff;border-color:#7890ff}
+.btn-analyze-match.q-good{background:#00e676;color:#04210f;border-color:#00e676;box-shadow:0 0 12px rgba(0,230,118,.55)}
+.btn-analyze-match.q-weak{background:#ffd600;color:#2b2300;border-color:#ffd600;box-shadow:0 0 14px rgba(255,214,0,.7)}
+.btn-analyze-match.q-err{background:rgba(255,61,87,.15);color:var(--red);border-color:var(--red)}
+.q-why{font-size:11px;color:#ffd600;margin:3px 0 2px;text-align:left}
+.q-badge{display:inline-block;font-size:11px;font-weight:700;border-radius:6px;padding:2px 7px;margin-left:6px}
+.q-badge.q-good{background:rgba(0,230,118,.18);color:var(--accent)}.q-badge.q-weak{background:#ffd600;color:#2b2300}
+.rk-pick{border:1px solid var(--border);border-radius:8px;padding:10px;margin:6px 0;background:rgba(255,255,255,.03)}
+.rk-t{font-weight:700;font-size:13px;margin-bottom:6px}
+.rk-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.rk-chip{flex:1 1 30%;min-width:96px;padding:9px 6px;border-radius:8px;border:2px solid var(--border);background:transparent;color:var(--muted);font-weight:700;font-size:12px;cursor:pointer}
+.rk-chip.low.on{border-color:var(--accent);background:rgba(0,230,118,.16);color:var(--accent)}
+.rk-chip.medium.on{border-color:#ffd600;background:rgba(255,214,0,.16);color:#ffd600}
+.rk-chip.high.on{border-color:var(--red);background:rgba(255,61,87,.16);color:var(--red)}
 .pk-line{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px}
 .pk-chip{font-size:11.5px;padding:3px 8px;border-radius:12px;border:1px solid}
 .pk-chip.low{border-color:var(--accent);color:var(--accent);background:rgba(0,230,118,.08)}
@@ -1151,7 +1166,7 @@ function renderDetails(m){
     h += mkBlock(m.id + '|log', 'История за сессию', `<div class="log">` + (log.length ? log.slice().reverse().map(l => `<span class="t">${clock(l.t)}</span> ${esc(l.text)}`).join('<br>') : '<span class="t">Изменений пока не было</span>') + `</div>`, true);
   }
   if (hasFocus) h += focus ? `<button class="btn-more" data-act="allmk">📋 Показать все рынки</button>` : `<button class="btn-more" data-act="focusmk">⬆️ Только рынки из прогноза</button>`;
-  return tvBtn(m) + myBetsBox(m) + aiBox(m) + h;
+  return (tvBtn(m) || fbBtn(m)) + myBetsBox(m) + aiBox(m) + h;
 }
 
 function openOnly(card){
@@ -1179,9 +1194,19 @@ function onContainerClick(e){
       const card = e.target.closest('.match-card'); if (card) toggleAllMk(card.dataset.id);
       return;
     }
+    if (['rk', 'rkgo', 'rkcancel'].includes(act.dataset.act)){
+      const card = e.target.closest('.match-card'); if (card) riskAct(card, act.dataset.act, act, card.dataset.id);
+      return;
+    }
     if (act.dataset.act === 'analyze' || act.dataset.act === 'reanalyze'){
       const card = e.target.closest('.match-card');
-      if (card){ openOnly(card); analyzeSingleMatch(card.dataset.id, act.dataset.act === 'reanalyze'); }
+      if (card){
+        openOnly(card);
+        const cur = aiResults[card.dataset.id];
+        if (cur && cur.state === 'loading') return;
+        if (cur && cur.state === 'done' && act.dataset.act === 'analyze') return;   // «показать»: просто раскрыть карточку
+        openRiskPicker(card.dataset.id, act.dataset.act === 'reanalyze');
+      }
       return;
     }
   }
@@ -1745,10 +1770,53 @@ function restoreAi(m){
     notes: A.notes || [], sources: A.sources || [], critic: A.criticNote ? { notes: A.criticNote } : null,
     data: { summary: A.summary, facts: A.facts, lineups: A.lineups, key_players: A.players, data_quality: A.quality, bets } };
 }
+/* ---- цвета ставок, которые искать (🟢 надёжные ≥70%, 🟡 средний риск 50–70%, 🔴 рискованные <50%) ---- */
+const RISK_KEYS = ['low', 'medium', 'high'], rkOpen = new Map();
+function getRiskSel(){ try { const a = JSON.parse(localStorage.getItem('fb_risk_sel')); if (Array.isArray(a)){ const f = a.filter(x => RISK_KEYS.includes(x)); if (f.length) return f; } } catch (e){} return RISK_KEYS.slice(); }
+function setRiskSel(a){ try { localStorage.setItem('fb_risk_sel', JSON.stringify(a)); } catch (e){} }
+const wantTxt = w => (w || RISK_KEYS).map(k => RISK[k]).join(', ');
+function riskPickerHtml(m){
+  const sel = getRiskSel();
+  return `<div class="rk-pick"><div class="rk-t">Какие ставки искать?</div><div class="rk-chips">${RISK_KEYS.map(k => `<button class="rk-chip ${k}${sel.includes(k) ? ' on' : ''}" data-act="rk" data-rk="${k}">${RISK[k]}${k === 'low' ? ' · от 70%' : k === 'medium' ? ' · 50–70%' : ' · до 50%'}</button>`).join('')}</div>
+    <div class="hint" style="text-align:left;margin:0 0 6px">Анализ пойдёт в режиме «${esc(modeLabel($('anMode').value))}», ИИ: ${esc(aiName())}${modelOf(aiCfg.prov) ? ', модель ' + esc(modelOf(aiCfg.prov)) : ''} (меняется в ⚙️).</div>
+    <button class="btn-analyze-match q-none" data-act="rkgo">🚀 Запустить анализ</button><button class="btn-more" data-act="rkcancel">Отмена</button></div>`;
+}
+function openRiskPicker(id, force){ rkOpen.set(String(id), !!force); renderAll(); }
+function riskAct(card, a, el, id, force){
+  id = String(id);
+  if (a === 'rk'){
+    const k = el.dataset.rk, cur = getRiskSel(), i = cur.indexOf(k);
+    if (i >= 0){ if (cur.length === 1){ toast('Выберите хотя бы один цвет'); return; } cur.splice(i, 1); } else cur.push(k);
+    setRiskSel(cur); el.classList.toggle('on', cur.includes(k)); return;
+  }
+  if (a === 'rkcancel'){ rkOpen.delete(id); renderAll(); return; }
+  if (a === 'rkgo'){ const f = rkOpen.get(id); rkOpen.delete(id); analyzeSingleMatch(id, !!f); }
+}
+/* оценка глубины разбора: 🟢 всё сработало, 🟡 мало данных или часть этапов не удалась */
+function qualityOf(mode, quality, notes, nBets, nHidden){
+  const why = [];
+  if (!nBets) why.push(nHidden ? 'нет ставок выбранных цветов' : 'нет ставок (критик снял или ИИ не предложил)');
+  if (quality === 'low') why.push('низкое качество данных');
+  (notes || []).forEach(n => {
+    n = String(n);
+    if (/Статистика матч-центра.*недоступна/i.test(n)) why.push('нет статистики матч-центра');
+    else if (/Разведка не удалась/i.test(n)) why.push('разведка в интернете не удалась');
+    else if (/Второй расчёт не удался/i.test(n)) why.push('второй расчёт не удался');
+    else if (/Критик не ответил/i.test(n)) why.push('критик не ответил');
+  });
+  if (mode === 'math') why.push('режим «только математика»'); else if (mode === 'quick') why.push('быстрый режим: без разведки');
+  return { lvl: why.length ? 'weak' : 'good', why };
+}
+function aiQuality(r){
+  if (!r || r.state !== 'done') return null;
+  const d = r.data || {};
+  return qualityOf(r.mode, d.data_quality, r.notes, Array.isArray(d.bets) ? d.bets.length : 0, Array.isArray(d.hidden) ? d.hidden.length : 0);
+}
 function aiButton(m){
-  const r = aiResults[m.id];
-  const label = !r ? '⚡ AI Анализ матча' : r.state === 'loading' ? '⏳ Анализ...' : r.state === 'done' ? '🤖 Прогноз готов — показать' : '⚠️ Ошибка — повторить';
-  return `<button class="btn-analyze-match" data-act="analyze"${r && r.state === 'loading' ? ' disabled' : ''}>${label}</button>`;
+  const r = aiResults[m.id], Q = aiQuality(r);
+  const cls = !r ? 'q-none' : r.state === 'loading' ? 'q-none' : r.state === 'done' ? (Q.lvl === 'good' ? 'q-good' : 'q-weak') : 'q-err';
+  const label = !r ? '⚡ AI Анализ матча' : r.state === 'loading' ? '⏳ Анализ...' : r.state === 'done' ? (Q.lvl === 'good' ? '🟢 Хорошо проанализирован — показать' : '🟡 Мало данных — показать') : '⚠️ Ошибка — повторить';
+  return `<button class="btn-analyze-match ${cls}" data-act="analyze"${r && r.state === 'loading' ? ' disabled' : ''}>${label}</button>${Q && Q.lvl === 'weak' ? `<div class="q-why">⚠️ ${esc(Q.why.join(' · '))}</div>` : ''}${rkOpen.has(String(m.id)) ? riskPickerHtml(m) : ''}`;
 }
 function aiBox(m){
   const r = aiResults[m.id];
@@ -1756,7 +1824,7 @@ function aiBox(m){
   if (r.state === 'loading') return `<div class="ai-box"><div class="log">⏳ ${esc(r.stage || aiName() + ' анализирует матч...')}</div></div>`;
   if (r.state === 'error') return `<div class="ai-box"><div class="bad">${esc(r.text)}</div><button class="btn-more" data-act="reanalyze">🔄 Повторить</button></div>`;
   const d = r.data;
-  let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная (подсвечены и в таблицах коэффициентов)</div>${aiTagHtml(r)}`;
+  let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная (подсвечены и в таблицах коэффициентов)${r.want && r.want.length < 3 ? ` · <b>искали: ${esc(wantTxt(r.want))}</b>` : ''}</div>${aiTagHtml(r)}`;
   if (d && d.summary) h += `<div class="ai-sum">${esc(d.summary)}</div>`;
   h += factsHtml(r, d);
   if (d && Array.isArray(d.bets) && d.bets.length){
@@ -1769,8 +1837,10 @@ function aiBox(m){
         facts: d && d.facts, lineups: d && d.lineups, players: d && d.key_players, quality: d && d.data_quality, mode: r.mode, prov: r.prov, model: r.model, sources: r.sources, t1: m.team1, t2: m.team2 };
       h += `<div class="bet ${e.risk}" data-bd="${esc(bkey)}"><div class="bet-top"><b>${esc(betTitle(m, e))}</b>${w ? `<span class="bet-who">→ ${esc(w)}</span>` : ''}<span class="bet-odd">${odd !== undefined && odd !== null ? 'кэф ' + esc(odd) : ''}</span><span class="bet-risk">${RISK[e.risk]}</span></div><div class="bet-why">${esc(b.reason || '')}</div>${probLine(m, e)}${b.value === false ? '<div class="why">ℹ️ Ценности нет: это просто самый разумный вариант</div>' : ''}<div class="tap-hint">Нажмите на ставку: полное обоснование ›</div><div class="bet-detail ${betOpen.has(bkey) ? 'open' : ''}">${rationaleHtml(ctx)}</div>${confirmCtl(m, i)}</div>`;
     });
+  } else if (d && Array.isArray(d.bets)){
+    h += `<div class="why">${d.hidden && d.hidden.length && !(d.dropped && d.dropped.length) ? '🎨 Ставок выбранных цветов (' + esc(wantTxt(r.want)) + ') нет. Ниже ставки других цветов: их можно подтвердить вручную или пересчитать с другим выбором.' : d.dropped && d.dropped.length ? '🧐 Критик снял все ставки этого разбора: рекомендовать нечего. Ниже причина. Если всё же хотите поставить, подтвердите ставку вручную.' : esc(d.no_bet_reason || 'ИИ не предложил ставок по этому матчу.')}</div>`;
   } else h += `<div class="log">${esc(r.raw || '')}</div>`;
-  if (d && Array.isArray(d.dropped) && d.dropped.length) h += `<details class="man"><summary>🧐 Критик снял ставки (${d.dropped.length})</summary>${d.dropped.map(b => `<div class="why">• ${esc(b.market)}: ${esc(b.vetoed)}</div>`).join('')}</details>`;
+  if (d && Array.isArray(d.dropped) && d.dropped.length) h += droppedHtml(m, d);
   h += `<div class="ai-foot">Разбор при счёте ${esc(r.score)} в ${clock(r.at)}${r.score !== m.score ? ' · <span class="bad">счёт изменился, пересчитайте</span>' : ''}. ИИ не знает исход матча, это разбор коэффициентов, а не гарантия.</div>${confirmAllCtl(m)}<button class="btn-more" data-act="reanalyze">🔄 Пересчитать</button></div>`;
   return h;
 }
@@ -2474,7 +2544,7 @@ async function runScout(m, force){
 }
 const SYS_ANALYST = 'Ты осторожный профессиональный аналитик спортивных ставок. Опираешься на числа и проверенные факты, не выдумываешь. Отвечаешь на русском, строго JSON.';
 const SYS_CRITIC = 'Ты строгий критик-перепроверщик прогнозов на спорт. Ищешь ошибки и завышенную уверенность. Отвечаешь на русском, строго JSON.';
-function buildAnalystPrompt(m, ctx, withDetail){
+function buildAnalystPrompt(m, ctx, withDetail, want){
   const M = ctx.M, before = m.start || Date.now() / 1000;
   const subs = m.subs.filter(sb => Object.keys(sb.odds).length).slice(0, 25).map(sb => `${sb.name}: ${JSON.stringify(sb.odds)}${sb.score ? '; счёт этого рынка ' + sb.score : ''}`).join('\n');
   const log = (matchLog[m.id] || []).slice(-15).map(l => `${clock(l.t).slice(0, 5)} ${l.text}`).join('\n');
@@ -2504,7 +2574,7 @@ ${q ? 'ТОЧНОСТЬ ПРОШЛЫХ ПРОГНОЗОВ ПРОГРАММЫ (у
 1) Основа — «итог модели» (рынок + статистика). Рынок букмекера обычно точен: отклоняйся, только если есть конкретные факты, которых он мог не учесть (составы, травмы ключевых игроков, вратарь, мотивация, усталость, переезд, погода, судья), или сильный сигнал статистики.
 2) Для каждого важного фактора дай поправку в процентных пунктах к конкретному рынку (adjustments). Один факт учитывай один раз. Обычно поправки 1–6 п.п.; больше 10 п.п. — только при очень сильных фактах.
 3) Итоговая вероятность = итог модели + поправки. Выгода = вероятность × кэф − 1.
-4) Дай от 1 до 3 ставок. Сначала с выгодой от +3%. Если таких нет — одну самую надёжную, value:false, и честно объясни в reason.
+${want && want.length < 3 ? `4) ПОЛЬЗОВАТЕЛЬ ВЫБРАЛ ЦВЕТА СТАВОК: ${want.map(k => ({ low: 'надёжные (итоговая вероятность от 70%)', medium: 'средний риск (вероятность 50–70%)', high: 'рискованные (вероятность ниже 50%, обычно высокий кэф)' }[k])).join('; ')}. Дай от 1 до 3 ставок ТОЛЬКО этих категорий (поле risk должно быть: ${want.join(' или ')}), лучшие по выгоде. Ставки других категорий не предлагай. Если подходящих нет — верни пустой bets и объясни в no_bet_reason.` : '4) Дай от 1 до 3 ставок. Сначала с выгодой от +3%. Если таких нет — одну самую надёжную, value:false, и честно объясни в reason.'}
 5) Мало данных (низшие лиги, нет составов) — снижай уверенность и data_quality.
 6) Факты только из данных выше. Ничего не выдумывай.
 Ответь ТОЛЬКО JSON:
@@ -2551,16 +2621,17 @@ function finalizeBets(m, d, M, critic){
     Object.assign(b, { pAI, pm, pmod: mp ? mp.pmod : null, pbase: base === undefined ? null : base, pf, push: mp ? mp.push : 0, alpha });
     if (pf !== null && odd > 1){ b.ev = evOf(pf, b.push, odd); b.kelly = kellyOf(pf, b.push, odd); b.risk = riskFrom(pf); b.prob = Math.round(pf * 1000) / 10; b.odds = odd; }
     b.adj = (d.adjustments || []).filter(a => sameKey(m, a.market, b.market)).slice(0, 6);
-    kept.push(b);
+    b.fin = true; kept.push(b);
   });
   kept.sort((x, y) => (y.ev === undefined ? -9 : y.ev) - (x.ev === undefined ? -9 : x.ev));
   d.bets = kept; d.dropped = dropped;
 }
-function mathBets(m, M){
+function mathBets(m, M, want){
   if (!M) throw new Error('⚠️ Для этого матча модель не строится: нет основных коэффициентов (исход, тотал или фора).');
   const rows = Object.entries(M.probs).map(([k, v]) => ({ k, v, odd: Number(m.odds[k]), ev: evOf(v.p, v.push, Number(m.odds[k])) })).filter(r => r.odd >= 1.15 && r.odd <= 6 && r.v.p >= 0.2);
-  const val = rows.filter(r => r.ev >= 0.02).sort((a, b) => b.ev - a.ev).slice(0, 3);
-  const pick = val.length ? val : rows.filter(r => r.ev >= -0.08).sort((a, b) => b.v.p - a.v.p).slice(0, 1);
+  const okR = r => !want || want.includes(riskFrom(r.v.p));
+  const val = rows.filter(r => r.ev >= 0.02 && okR(r)).sort((a, b) => b.ev - a.ev).slice(0, 3);
+  const pick = val.length ? val : rows.filter(r => r.ev >= -0.08 && okR(r)).sort((a, b) => b.v.p - a.v.p).slice(0, 1);
   const before = m.start || Date.now() / 1000;
   const A = m.t1id ? teamStats(m.t1id, before, 10) : null, B = m.t2id ? teamStats(m.t2id, before, 10) : null;
   const facts = M.notes.slice();
@@ -2596,7 +2667,7 @@ async function analyzeSingleMatch(id, force){
   const m = matchById[id]; if (!m) return;
   const cur = aiResults[id];
   if (cur && (cur.state === 'loading' || (cur.state === 'done' && !force))) return;
-  const mode = $('anMode').value, withDetail = $('detailChk').checked, notes = [];
+  const mode = $('anMode').value, withDetail = $('detailChk').checked, notes = [], want = getRiskSel();
   const stage = t => { const r = aiResults[id]; if (r && r.state === 'loading'){ r.stage = t; renderAll(); } };
   aiResults[id] = { state: 'loading', stage: '📊 Статистика Фонбета: таблица, форма, составы...' }; renderAll();
   try {
@@ -2606,7 +2677,7 @@ async function analyzeSingleMatch(id, force){
     const M = modelFor(m);
     let data, scout = null, afb = null, W = null, prov = '', model = '', critic = null;
     if (mode === 'math'){
-      data = mathBets(m, M);
+      data = mathBets(m, M, want.length < 3 ? want : null);
       const st = F && F.SI ? standingsText(F.SI, [F.P1, F.P2].filter(Boolean).map(x => String(x.id))) : '';
       if (st) data.facts = data.facts.concat(st.split('\n').slice(1));
     }
@@ -2614,7 +2685,7 @@ async function analyzeSingleMatch(id, force){
       ({ scout, afb, W } = await gatherCtx(m, mode, force, notes, stage));
       const ctx = { M, scout, afb, W, F };
       stage(`🧠 Аналитик (${aiName()}) считает вероятности...`);
-      const prompt = buildAnalystPrompt(m, ctx, withDetail);
+      const prompt = buildAnalystPrompt(m, ctx, withDetail, want);
       const runA = async () => { const r = await aiRequest(prompt, { json: true, thinking: true, temp: 0.3, system: SYS_ANALYST, maxTokens: 8000 }); return { d: parseBets(r.text), r }; };
       const A1 = await runA();
       if (!A1.d) throw new Error(`⚠️ ${aiName(A1.r.prov)} ответил не в формате JSON. Нажмите «Пересчитать».`);
@@ -2632,8 +2703,14 @@ async function analyzeSingleMatch(id, force){
       if (!data.data_quality && scout && scout.data) data.data_quality = scout.data.data_quality;
     }
     finalizeBets(m, data, M, critic);
-    if (!data.bets.length && !(data.dropped || []).length) throw new Error('⚠️ ИИ не предложил ни одной ставки. ' + (data.no_bet_reason || 'Нажмите «Пересчитать».'));
-    aiResults[id] = { state: 'done', raw: JSON.stringify(data), data, at: Date.now(), score: m.score, mode, prov, model, notes, critic,
+    data.hidden = [];
+    if (want.length < 3){   // ставки не выбранных цветов не пропадают: лежат в «скрыто по цветам», их можно подтвердить вручную
+      const keep = [];
+      data.bets.forEach(b => { if (want.includes(b.risk)) keep.push(b); else { b.hiddenWhy = `Цвет ставки ${RISK[b.risk] || b.risk} не входит в выбранные (${wantTxt(want)}).`; data.hidden.push(b); } });
+      data.bets = keep;
+    }
+    if (!data.bets.length && !(data.dropped || []).length && !data.hidden.length) throw new Error('⚠️ ИИ не предложил ни одной ставки. ' + (data.no_bet_reason || 'Нажмите «Пересчитать».'));
+    aiResults[id] = { state: 'done', raw: JSON.stringify(data), data, at: Date.now(), score: m.score, mode, prov, model, notes, critic, want,
       sources: (scout && scout.sources) || [], scoutAt: scout ? scout.at : 0, scoutProv: (scout && scout.prov) || '', scoutModel: (scout && scout.model) || '', scoutCached: !!(scout && scout.cached), scout: scout && scout.data ? scout.data : null,
       ctx: { weather: weatherText(W), afb: afb ? afbText(afb) : '', move: movementText(m), model: M ? M.notes.join(' ') : '', fb: F ? ssisText(F, m) : '' } };
     const A = recordAnalysis(m); if (A) aiResults[id].aid = A.aid;
@@ -3086,6 +3163,19 @@ function liveUpdate(){
 }
 const inputBusy = root => { const ae = document.activeElement; return !!(ae && root && root.contains(ae) && ae.tagName === 'INPUT' && /^(text|number|search|date|tel)$/.test(ae.type)); };
 
+/* ================= Ссылка на событие в Фонбете ================= */
+function fbUrl(o){
+  const mid = String(o.mid !== undefined ? o.mid : o.id);
+  const m = matchById[mid] || (o.team1 && o.id !== undefined ? o : null);
+  const alias = (m && m.alias) || o.alias || '', seg = (m && m.seg) || o.seg || '';
+  const base = 'https://fon.bet/sports/' + encodeURIComponent(alias || 'football');
+  return seg ? `${base}/${encodeURIComponent(seg)}/${encodeURIComponent(mid)}` : base;
+}
+function fbBtn(o){ return `<a class="btn-fb" href="${esc(fbUrl(o))}" target="_blank" rel="noopener">🔗 Открыть на Фонбете</a>`; }
+function fbFill(byId){   // у старых записей нет раздела спорта и сегмента: дописываем, пока матч есть в линии
+  const fix = x => { if (!x.seg){ const m = byId[String(x.mid)]; if (m && m.seg){ x.seg = m.seg; x.alias = m.alias || ''; } } };
+  preds.forEach(fix); analyses.forEach(fix);
+}
 /* ================= Трансляция на Фонбете ================= */
 function tvBtn(m){
   if (!Array.isArray(m.tv) || !m.tv.length || m.status === 'finished') return '';
@@ -3212,7 +3302,7 @@ function renderExpressResult(scroll){
   if (r.X) h += `<div class="why">По модели (рынок + статистика): шанс пройти целиком ≈ <b>${(r.X.prob * 100).toFixed(1)}%</b> · честный кэф ≈ ${r.X.fair.toFixed(2)} против ${r.total.toFixed(2)} у Фонбета · <span style="color:${r.X.ev >= 0 ? 'var(--accent)' : 'var(--red)'}">выгода ${r.X.ev >= 0 ? '+' : ''}${Math.round(r.X.ev * 100)}%</span>${r.X.ev < 0 ? '. Минус — это маржа букмекера, умноженная на число событий: чем длиннее экспресс, тем она больше.' : ''}</div>`;
   if (r.legs.length) h += `<div class="ai-foot">Нажмите на ставку, чтобы открыть матч и прогноз.</div>`;
   r.legs.forEach((l, i) => {
-    h += `<div class="bet ${l.risk}" data-mid="${esc(l.id)}"><div class="bet-top"><b>${i + 1}. ${esc(l.market)}</b><span class="bet-who">→ ${esc(l.desc)}</span><span class="bet-odd">кэф ${esc(l.odd)}</span><span class="bet-risk">${RISK[l.risk]}</span></div><div class="ex-leg-match">${esc(l.title)}</div><div class="bet-why">${esc(l.reason)}</div>${l.p ? `<div class="why">${l.pm ? 'рынок ' + pct(l.pm) + ' → ' : ''}модель ${pct(l.pbase ?? l.p)}${l.pAI !== null && l.pAI !== undefined ? ' · ИИ ' + pct(l.pAI) : ''} → итог <b>${pct(l.p)}</b> · выгода ${(() => { const e = evOf(l.p, l.push || 0, l.odd); return (e >= 0 ? '+' : '') + Math.round(e * 100) + '%'; })()}</div>` : ''}${l.critic ? `<div class="why">🧐 ${esc(l.critic)}</div>` : ''}</div>`;
+    h += `<div class="bet ${l.risk}" data-mid="${esc(l.id)}"><div class="bet-top"><b>${i + 1}. ${esc(l.market)}</b><span class="bet-who">→ ${esc(l.desc)}</span><span class="bet-odd">кэф ${esc(l.odd)}</span><span class="bet-risk">${RISK[l.risk]}</span></div><div class="ex-leg-match">${esc(l.title)}</div>${fbBtn({ mid: l.id })}<div class="bet-why">${esc(l.reason)}</div>${l.p ? `<div class="why">${l.pm ? 'рынок ' + pct(l.pm) + ' → ' : ''}модель ${pct(l.pbase ?? l.p)}${l.pAI !== null && l.pAI !== undefined ? ' · ИИ ' + pct(l.pAI) : ''} → итог <b>${pct(l.p)}</b> · выгода ${(() => { const e = evOf(l.p, l.push || 0, l.odd); return (e >= 0 ? '+' : '') + Math.round(e * 100) + '%'; })()}</div>` : ''}${l.critic ? `<div class="why">🧐 ${esc(l.critic)}</div>` : ''}</div>`;
   });
   if (!r.saved) h += `<div class="cf-row exp-conf">${stakeCtl('exp:new', r.total.toFixed(2))}<button class="cf-btn" id="exConfirm">✅ Подтвердить экспресс</button></div><div class="hint" style="text-align:left">Экспресс попадёт в «📚 Мои экспрессы» и будет отслеживаться только после подтверждения. Коэффициенты фиксируются на момент подтверждения.</div>`;
   else h += `<div class="ai-sum">✅ Экспресс подтверждён: ставка ${rub(r.stake)}, общий кэф ${r.total.toFixed(2)}, возможный выигрыш ${rub(r.stake * r.total)}. Слежу за ним во вкладке «📚 Мои экспрессы».</div>`;
@@ -3473,7 +3563,7 @@ function initExpress(){
   $('exResult').addEventListener('click', e => {
     if (e.target.closest('#exConfirm')){ confirmExpress(); return; }
     if (e.target.closest('.stake-box')) return;
-    const lg = e.target.closest('[data-mid]'); if (lg){ openMatchModal(lg.dataset.mid); return; }
+    const lg = e.target.closest('[data-mid]'); if (lg){ if (e.target.closest('a')) return; openMatchModal(lg.dataset.mid); return; }
     if (!e.target.closest('#exCopy') || !expResult || expResult.state !== 'done') return;
     const txt = expResult.legs.map((l, i) => `${i + 1}. ${l.title.replace(/^\S+\s/, '')}: ${l.desc} (кэф ${l.odd})`).join('\n') + `\nОбщий кэф ≈ ${expResult.total.toFixed(2)}`;
     if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => { e.target.textContent = '✅ Скопировано'; }).catch(() => {});
@@ -3542,7 +3632,13 @@ function initMatchModal(){
     const act = e.target.closest('[data-act]');
     if (act){
       const a = act.dataset.act;
-      if (a === 'analyze' || a === 'reanalyze') analyzeSingleMatch(card.dataset.id, a === 'reanalyze');
+      if (['rk', 'rkgo', 'rkcancel'].includes(a)) riskAct(card, a, act, card.dataset.id);
+      else if (a === 'analyze' || a === 'reanalyze'){
+        const cur = aiResults[card.dataset.id];
+        if (cur && cur.state === 'loading') return;
+        if (cur && cur.state === 'done' && a === 'analyze') return;
+        openRiskPicker(card.dataset.id, a === 'reanalyze');
+      }
       else if (a === 'allmk' || a === 'focusmk') toggleAllMk(card.dataset.id);
       return;
     }
@@ -3678,7 +3774,7 @@ function touchTrack(m){
 }
 function makePred(m, o){
   touchTrack(m);
-  return { pid: uid('p'), src: o.src, mid: String(m.id), sk: m.sportKey, ms: m.start || 0, t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon,
+  return { pid: uid('p'), src: o.src, mid: String(m.id), sk: m.sportKey, seg: m.seg || '', alias: m.alias || '', ms: m.start || 0, t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon,
     market: o.market, sub: o.sub || '', risk: o.risk, odd: o.odd, prob: o.prob || null, desc: o.desc || '', reason: o.reason || '',
     pAI: o.pAI ?? null, pbase: o.pbase ?? null, pm: o.pm ?? null, pf: o.pf ?? null, ev: o.ev ?? null,
     aiProv: o.aiProv || '', aiModel: o.aiModel || '', aiMode: o.aiMode || '', sProv: o.sProv || '', sModel: o.sModel || '',
@@ -3789,7 +3885,7 @@ function backfillMonitoring(byId){
 }
 function updateTracking(fresh, healthy){
   const byId = {}; fresh.forEach(m => byId[String(m.id)] = m);
-  backfillMonitoring(byId);
+  backfillMonitoring(byId); fbFill(byId);
   const pend = new Set(preds.filter(p => p.state === 'pending').map(p => p.mid));
   Object.keys(track).forEach(k => { if (!pend.has(k)) delete track[k]; });
   if (!pend.size){ saveStore(); return; }
@@ -3826,7 +3922,7 @@ function recordAnalysis(m){
   const oldIds = new Set(old.map(a => a.aid));
   analyses = analyses.filter(a => !oldIds.has(a.aid)); preds = preds.filter(p => !(p.virtual && oldIds.has(p.aid)));
   const r = aiResults[m.id];
-  const A = { aid: uid('a'), mid: String(m.id), t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon, at: Date.now(), score: m.score, ms: m.start || 0,
+  const A = { aid: uid('a'), mid: String(m.id), seg: m.seg || '', alias: m.alias || '', t1: m.team1, t2: m.team2, league: m.league, icon: m.sportIcon, at: Date.now(), score: m.score, ms: m.start || 0,
     summary: (r && r.data && r.data.summary) || '', facts: (r && r.data && Array.isArray(r.data.facts)) ? r.data.facts.slice(0, 8).map(String) : [], lineups: (r && r.data && r.data.lineups) || null,
     players: (r && r.data && Array.isArray(r.data.key_players)) ? r.data.key_players.slice(0, 16) : [], quality: (r && r.data && r.data.data_quality) || '', mode: (r && r.mode) || '', sources: ((r && r.sources) || []).slice(0, 8),
     prov: (r && r.prov) || '', model: (r && r.model) || '', scoutProv: (r && r.scoutProv) || '', scoutModel: (r && r.scoutModel) || '', notes: (r && r.notes) || [], ctx: null, criticNote: (r && r.critic && r.critic.notes) || '', bets: [], timeline: [{ t: Date.now(), min: m.status === 'live' ? fmtTimer(m, false) : '', score: m.score }], final: null, ended: null };
@@ -3872,6 +3968,44 @@ function betStateHtml(A, i, b){
   if (p.state === 'pending') return `<div class="cf-row">${stakeCtl('a:' + A.aid + '|' + i, b.odd)}<button class="cf-btn" data-cact="confirm" data-aid="${esc(A.aid)}" data-i="${i}">✅ Подтвердить ставку</button></div>`;
   return `<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]} · без ставки</span>${moneyLine(p)}</div><div class="hx-n">${p.state === 'unknown' ? 'Ставка не распознана, подтвердить её нельзя.' : 'Событие уже определилось, поэтому подтвердить ставку нельзя.'}</div>`;
 }
+/* ставки, снятые критиком: показываем причину и даём подтвердить вручную («на свой риск») */
+function droppedHtml(m, d){
+  const blk = (list, kind, title, open) => !list || !list.length ? '' : `<details class="man"${open ? ' open' : ''}><summary>${title} (${list.length})</summary>${list.map((b, i) => {
+    const rp = resolvePick(m, b.market), sb = rp.sub >= 0 ? m.subs[rp.sub] : null, e = { b, key: rp.key, sub: rp.sub };
+    const odd = rp.key ? Number(sb ? sb.odds[rp.key] : m.odds[rp.key]) : Number(b.odds), w = betWho(m, e);
+    return `<div class="bet ${['low', 'medium', 'high'].includes(b.risk) ? b.risk : 'medium'}"><div class="bet-top"><b>${esc(betTitle(m, e))}</b>${w ? `<span class="bet-who">→ ${esc(w)}</span>` : ''}<span class="bet-odd">кэф ${esc(odd || '—')}</span>${b.fin ? `<span class="bet-risk">${RISK[b.risk] || ''}</span>` : ''}</div><div class="why">${kind === 'dropped' ? '🧐 Почему снята: ' + esc(b.vetoed || 'снята критиком') : '🎨 ' + esc(b.hiddenWhy || 'Не входит в выбранные цвета.')}</div>${b.reason ? `<div class="bet-why">${esc(b.reason)}</div>` : ''}${rp.key && odd > 1 ? `<div class="cf-row">${stakeCtl('f:' + m.id + '|' + kind + '|' + i, odd)}<button class="cf-btn" data-cact="force" data-mid="${esc(m.id)}" data-kind="${kind}" data-i="${i}">${kind === 'dropped' ? '⚠️ Всё равно подтвердить ставку' : '✅ Подтвердить ставку'}</button></div>` : '<div class="hx-n">Ставка не распознана, подтвердить её нельзя.</div>'}</div>`;
+  }).join('')}</details>`;
+  return blk(d.dropped, 'dropped', '🧐 Критик снял ставки', !d.bets.length && !(d.hidden || []).length) + blk(d.hidden, 'hidden', '🎨 Другие цвета ставок: скрыты по вашему выбору', !d.bets.length);
+}
+/* перенос снятой критиком (или скрытой по цвету) ставки в обычные ставки разбора и подтверждение с суммой */
+function forceBet(mid, kind, i, stake){
+  const m = matchById[String(mid)], r = aiResults[String(mid)];
+  const list = r && r.data ? r.data[kind === 'hidden' ? 'hidden' : 'dropped'] : null;
+  if (!m || !r || r.state !== 'done' || !Array.isArray(list) || !list[i]){ toast('Матч или разбор уже недоступен'); return; }
+  const d = r.data, b = list[i], rp = resolvePick(m, b.market), sb = rp.sub >= 0 ? m.subs[rp.sub] : null;
+  if (!rp.key){ toast('Ставка не распознана, подтвердить нельзя'); return; }
+  const odd = Number(sb ? sb.odds[rp.key] : m.odds[rp.key]); if (!(odd > 1)){ toast('Приём этой ставки закрыт'); return; }
+  if (!b.fin){
+    let M = null; try { M = modelFor(m); } catch (e){}
+    const alpha = shrinkAlpha(m.sportKey);
+    let pAI = Number(b.prob) / 100; if (!(pAI > 0 && pAI < 1)) pAI = null;
+    const mp = (!sb && M && M.probs[rp.key]) ? M.probs[rp.key] : null, pm = !sb ? marketProb(m, rp.key) : null, base = mp ? mp.p : pm;
+    let pf = pAI;
+    if (base !== null && base !== undefined && pAI !== null) pf = base + alpha * (pAI - base);
+    else if (pf === null && base !== null && base !== undefined) pf = base;
+    Object.assign(b, { pAI, pm, pmod: mp ? mp.pmod : null, pbase: base === undefined ? null : base, pf, push: mp ? mp.push : 0, alpha, adj: [], fin: true });
+    if (pf !== null){ b.ev = evOf(pf, b.push, odd); b.kelly = kellyOf(pf, b.push, odd); b.risk = riskFrom(pf); b.prob = Math.round(pf * 1000) / 10; }
+  }
+  b.odds = odd;
+  if (kind === 'dropped'){ b.critic = 'Критик советовал не ставить: ' + (b.vetoed || '') + ' Вы подтвердили вручную.'; delete b.vetoed; }
+  else delete b.hiddenWhy;
+  list.splice(i, 1); d.bets.push(b);
+  d.bets.sort((x, y) => (y.ev === undefined ? -9 : y.ev) - (x.ev === undefined ? -9 : x.ev));
+  const A = recordAnalysis(m); if (!A){ toast('Не удалось сохранить разбор'); return; }
+  r.aid = A.aid;
+  const idx = A.bets.findIndex(x => x.market === rp.key && (x.sub || '') === (sb ? sb.name : ''));
+  if (idx < 0 || !confirmBet(A.aid, idx, false, stake)) renderAll();
+}
 /* разбор матча → запись в «Анализ матча». Если запись потерялась (перезагрузка, пересчёт, смена линии), находим или создаём её заново, чтобы кнопка подтверждения не пропадала */
 function analysisFor(m){
   const r = aiResults[m.id]; if (!r || r.state !== 'done') return null;
@@ -3904,6 +4038,7 @@ function handleConfirm(b){
   const c = b.dataset.cact, aid = b.dataset.aid;
   if (c === 'confirm') confirmBet(aid, Number(b.dataset.i), false, readStake(b.closest('.cf-row'), 'a:' + aid + '|' + b.dataset.i));
   else if (c === 'all') confirmAll(aid);
+  else if (c === 'force') forceBet(b.dataset.mid, b.dataset.kind, Number(b.dataset.i), readStake(b.closest('.cf-row'), 'f:' + b.dataset.mid + '|' + b.dataset.kind + '|' + b.dataset.i));
   else if (c === 'cancel') cancelBet(aid, Number(b.dataset.i));
   else if (c === 'savestake'){
     const key = b.dataset.sk, v = Number(readStake(b.closest('.cf-row') || b.parentElement, key));
@@ -3937,6 +4072,7 @@ function analysisCard(A){
   const tl = (A.timeline || []).map(x => `${x.min ? x.min + ' ' : ''}<b>${esc(x.score)}</b>`).join(' → ');
   let h = `<div class="hx"><div class="hx-head" data-omid="${esc(A.mid)}"><b>${A.icon || ''} ${esc(A.t1)} — ${esc(A.t2)} <span class="open-hint">· открыть ›</span></b><span class="hx-sub" style="margin:0">${hasMine ? `⭐ Мои ставки: ${mine.length} · ` : ''}${fmtDT(A.at)}</span></div>
     <div class="hx-sub">${esc(A.league)} · сейчас: ${liveLine({ mid: A.mid, final: A.final, ms: A.ms })}</div>
+    <div>${fbBtn(A)}${(() => { const Q = qualityOf(A.mode, A.quality, A.notes, A.bets.length, 0); return `<span class="q-badge q-${Q.lvl}" title="${esc(Q.why.join(' · '))}">${Q.lvl === 'good' ? '🟢 хорошо проанализирован' : '🟡 мало данных'}</span>`; })()}</div>
     ${aiTagHtml(A)}
     ${pending ? '<div class="mon">👁 Слежу за матчем автоматически</div>' : ''}
     ${A.recheck ? `<div class="hx-n">${esc(A.recheck)}</div>` : ''}
@@ -4325,7 +4461,7 @@ function applyScore(mid, a, b, via){
 function legHtml(p){
   return `<div class="hx-leg ${p.state}" data-omid="${esc(p.mid)}"><div class="hx-m">${p.icon || ''} ${esc(p.t1)} — ${esc(p.t2)} <span class="open-hint">· открыть ›</span></div>
     <div class="hx-b"><b>${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b> → ${esc(p.desc)} · кэф ${esc(p.odd)} · ${RISK[p.risk] || ''}</div>${p.src !== 'express' ? aiTagHtml(p) : ''}
-    <div class="hx-l">${liveLine(p)} <span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div>${p.src !== 'express' && !p.virtual ? `<div class="hx-l">${moneyLine(p)}</div>` : ''}
+    <div class="hx-l">${liveLine(p)} <span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span></div><div class="hx-l">${fbBtn(p)}</div>${p.src !== 'express' && !p.virtual ? `<div class="hx-l">${moneyLine(p)}</div>` : ''}
     ${p.note ? `<div class="hx-n">${esc(p.note)}</div>` : ''}${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}${p.state !== 'pending' ? `<details class="man"><summary>Исправить вручную</summary>${manualBtns(p)}</details>` : ''}</div>`;
 }
 function expCard(ex, pm, no){
@@ -4426,4 +4562,4 @@ async function analyzeTopLine(scope){
 
 </script>
 </body>
-</html>
+  </html>
