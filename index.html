@@ -870,6 +870,7 @@ function passFilters(m, q){
 }
 
 function cardHtml(m, showLeague){
+  restoreAi(m);
   const entries = Object.entries(m.odds).filter(([k]) => !m.prim || !m.prim.length || m.prim.includes(k)), pk = pickMap(m);
   const oddsHtml = entries.length
     ? `<div class="odds-grid">` + entries.map(([k, v]) => `<div class="odd-btn ${m.oddsDir[k] || ''} ${pk[k] ? 'pick-' + pk[k] : ''}"><span class="odd-label">${esc(k)}</span><span class="odd-val">${esc(v)}</span></div>`).join('') + `</div>`
@@ -1105,7 +1106,7 @@ function myBetsBox(m){
   const mine = preds.filter(p => p.mid === String(m.id) && (p.src === 'express' || !p.virtual));
   if (!mine.length) return '';
   return `<div class="ai-box"><div class="ai-legend">⭐ Мои ставки на этот матч (слежу автоматически)</div><div class="tl">${liveLine({ mid: String(m.id) })}</div>` + mine.map(p =>
-    `<div class="bet ${p.risk}"><div class="bet-top"><b>${p.src === 'express' ? '🎯 ' : '⭐ '}${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b><span class="bet-who">→ ${esc(p.desc)}</span><span class="bet-odd">кэф ${esc(p.odd)}</span></div>${p.src !== 'express' ? aiTagHtml(p) : ''}<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.src !== 'express' ? moneyLine(p) : ''}</div>${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}</div>`).join('') + `</div>`;
+    `<div class="bet ${p.risk}"><div class="bet-top"><b>${p.src === 'express' ? '🎯 ' : '⭐ '}${esc((p.sub ? p.sub + ': ' : '') + p.market)}</b><span class="bet-who">→ ${esc(p.desc)}</span><span class="bet-odd">кэф ${esc(p.odd)}</span></div>${aiTagHtml(p)}<div class="cf-row"><span class="hx-st ${p.state}">${STATE_LBL[p.state]}${p.final && p.state !== 'pending' ? ' (' + esc(p.final) + ')' : ''}</span>${p.src !== 'express' ? moneyLine(p) : ''}</div>${explainPred(p) ? `<div class="why">${esc(explainPred(p))}</div>` : ''}</div>`).join('') + `</div>`;
 }
 
 function renderDetails(m){
@@ -1732,6 +1733,18 @@ function pickLine(m){
   const es = pickEntries(m); if (!es.length) return '';
   return `<div class="pk-line">` + es.map(e => { const w = betWho(m, e); return `<span class="pk-chip ${e.risk}">🤖 ${esc(betTitle(m, e))}${w ? ' · ' + esc(w) : ''}</span>`; }).join('') + `</div>`;
 }
+/* после перезагрузки страницы: показать последний разбор матча с кнопками «Подтвердить» (до 12 часов, пока матч не закончился) */
+const restoreTried = new Set();
+function restoreAi(m){
+  if (!m || aiResults[m.id] || restoreTried.has(String(m.id))) return;
+  restoreTried.add(String(m.id));
+  const A = analyses.filter(a => a.mid === String(m.id) && !a.ended && Date.now() - a.at < 12 * 3600e3 && a.bets.length).slice(-1)[0];
+  if (!A || m.status === 'finished') return;
+  const bets = A.bets.map(b => Object.assign({}, b, { market: b.sub ? b.sub + ': ' + b.market : b.market, odds: b.odd }));
+  aiResults[m.id] = { state: 'done', restored: true, aid: A.aid, at: A.at, score: A.score, raw: '', mode: A.mode, prov: A.prov, model: A.model, scoutProv: A.scoutProv, scoutModel: A.scoutModel,
+    notes: A.notes || [], sources: A.sources || [], critic: A.criticNote ? { notes: A.criticNote } : null,
+    data: { summary: A.summary, facts: A.facts, lineups: A.lineups, key_players: A.players, data_quality: A.quality, bets } };
+}
 function aiButton(m){
   const r = aiResults[m.id];
   const label = !r ? '⚡ AI Анализ матча' : r.state === 'loading' ? '⏳ Анализ...' : r.state === 'done' ? '🤖 Прогноз готов — показать' : '⚠️ Ошибка — повторить';
@@ -1855,6 +1868,7 @@ function aiTagHtml(o){
   if (prov) parts.push(`ИИ: ${aiName(prov)}${model ? ' · модель ' + model : ''}`);
   else if (mode === 'math') parts.push('ИИ не использовался');
   if (sp && (sp !== prov || sm !== model)) parts.push(`разведка: ${aiName(sp)}${sm ? ' · ' + sm : ''}`);
+  if (parts.length && (o.kind === 'express' || o.src === 'express') && mode !== 'express') parts.unshift('🎯 Экспресс');
   return parts.length ? `<div class="ai-tag">🏷 ${parts.map(esc).join(' · ')}</div>` : '';
 }
 function rationaleHtml(c){
@@ -2560,6 +2574,24 @@ function mathBets(m, M){
       detail: `${M.notes.join(' ')}\nСтавка: ${describeBet(m, r.k)} по кэф. ${r.odd}. Вероятность модели ${pct(r.v.p)}${r.v.push > 0.005 ? ' и возврат ' + pct(r.v.push) : ''}, рынок без маржи даёт ${pct(r.v.pm)}. ${r.ev >= 0.02 ? 'Перевес есть, но он может быть шумом модели: ставьте небольшую долю банка.' : 'Перевеса нет: это просто самый вероятный исход.'}` }))
   };
 }
+/* разведка в интернете, API-Football и погода: одинаково для разбора матча и для экспресса */
+async function gatherCtx(m, mode, force, notes, stage){
+  let scout = null, afb = null, W = null;
+  const st = t => { if (stage) stage(t); };
+  if (mode !== 'deep' && mode !== 'max') return { scout, afb, W };
+  st(`🔎 Разведчик (${aiName(searchProv() || aiCfg.prov)}) ищет составы, травмы, новости...`);
+  try { scout = await runScout(m, force); if (scout.note) notes.push(scout.note); } catch (e){ notes.push('Разведка не удалась: ' + e.message); }
+  if (m.sportKey === 'football' && provHasKeys('apifb')){
+    st('⚽ API-Football: составы, травмы, сравнение команд...');
+    try { afb = await afbBundle(m, true); if (!afb) notes.push('API-Football: матч не найден в их базе (или не удалось сопоставить названия).'); } catch (e){ notes.push(e.message); }
+  }
+  const V = scout && scout.data && scout.data.venue;
+  const city = (afb && afb.fx.vc) || (V && V.city);
+  if (city && OUTDOOR.includes(m.sportKey) && !(V && V.indoor === true)){
+    try { W = await weatherFor(String(city).replace(/\(.*\)/, '').trim(), (V && V.country) || (afb && afb.fx.cn) || '', m.start || Date.now() / 1000); } catch (e){}
+  }
+  return { scout, afb, W };
+}
 async function analyzeSingleMatch(id, force){
   const m = matchById[id]; if (!m) return;
   const cur = aiResults[id];
@@ -2579,20 +2611,7 @@ async function analyzeSingleMatch(id, force){
       if (st) data.facts = data.facts.concat(st.split('\n').slice(1));
     }
     else {
-      if (mode === 'deep' || mode === 'max'){
-        const sp = searchProv();
-        stage(`🔎 Разведчик (${aiName(sp || aiCfg.prov)}) ищет составы, травмы, новости...`);
-        try { scout = await runScout(m, force); if (scout.note) notes.push(scout.note); } catch (e){ notes.push('Разведка не удалась: ' + e.message); }
-      }
-      if (mode !== 'quick' && m.sportKey === 'football' && provHasKeys('apifb')){
-        stage('⚽ API-Football: составы, травмы, сравнение команд...');
-        try { afb = await afbBundle(m, true); if (!afb) notes.push('API-Football: матч не найден в их базе (или не удалось сопоставить названия).'); } catch (e){ notes.push(e.message); }
-      }
-      const V = scout && scout.data && scout.data.venue;
-      const city = (afb && afb.fx.vc) || (V && V.city);
-      if (mode !== 'quick' && city && OUTDOOR.includes(m.sportKey) && !(V && V.indoor === true)){
-        try { W = await weatherFor(String(city).replace(/\(.*\)/, '').trim(), (V && V.country) || (afb && afb.fx.cn) || '', m.start || Date.now() / 1000); } catch (e){}
-      }
+      ({ scout, afb, W } = await gatherCtx(m, mode, force, notes, stage));
       const ctx = { M, scout, afb, W, F };
       stage(`🧠 Аналитик (${aiName()}) считает вероятности...`);
       const prompt = buildAnalystPrompt(m, ctx, withDetail);
@@ -3158,77 +3177,248 @@ function renderExpressList(list){
   });
   return h;
 }
-function renderExpressResult(){
+function renderExpressResult(scroll){
   const el = $('exResult'), r = expResult;
+  if (!el) return;
   if (!r){ el.innerHTML = ''; return; }
-  if (r.state === 'loading'){ el.innerHTML = `<div class="ai-box"><div class="log">⏳ ${esc(aiName())} собирает экспресс...</div></div>`; return; }
+  if (r.state === 'loading'){ el.innerHTML = `<div class="ai-box">${r.mode ? `<div class="ai-tag">🏷 🎯 Экспресс · Режим: ${esc(modeLabel(r.mode))}</div>` : ''}<div class="log">⏳ ${esc(r.stage || aiName() + ' собирает экспресс...')}</div></div>`; return; }
   if (r.state === 'error'){ el.innerHTML = `<div class="ai-box"><div class="bad">${esc(r.text)}</div></div>`; return; }
   let h = `<div class="ai-box"><div class="ai-legend">🟢 надёжная · 🟡 средний риск · 🔴 рискованная</div>${aiTagHtml(r)}`;
   if (r.summary) h += `<div class="ai-sum">${esc(r.summary)}</div>`;
+  if (r.nPool) h += `<div class="ai-foot" style="margin:0 0 4px">Учтено: модель (рынок + статистика) для ${r.nPool} ${plural(r.nPool, 'события', 'событий', 'событий')}, статистика матч-центра Фонбета — ${r.nStats || 0}${r.nCtx ? `, разведка в интернете — ${r.nScout || 0} из ${r.nCtx}` : ''}. Итоговая вероятность = модель + ${Math.round(((r.legs[0] && r.legs[0].alpha) ?? 0.5) * 100)}% поправки ИИ, как в разборе матча.</div>`;
+  if (Array.isArray(r.notes) && r.notes.length) h += `<div class="hx-n">${r.notes.slice(0, 12).map(esc).join('<br>')}</div>`;
+  if (r.criticNote) h += `<div class="why">🧐 Критик: ${esc(r.criticNote)}</div>`;
+  if (Array.isArray(r.dropped) && r.dropped.length) h += `<details class="man"><summary>🧐 Критик снял ставки (${r.dropped.length})</summary>${r.dropped.map(d => `<div class="why">• ${esc(d.title)}: ${esc(d.market)} — ${esc(d.why)}</div>`).join('')}</details>`;
   h += `<div class="ex-total">Экспресс из ${r.legs.length} событий · общий кэф ≈ <b>${r.total.toFixed(2)}</b></div>`;
   if (r.X) h += `<div class="why">По модели (рынок + статистика): шанс пройти целиком ≈ <b>${(r.X.prob * 100).toFixed(1)}%</b> · честный кэф ≈ ${r.X.fair.toFixed(2)} против ${r.total.toFixed(2)} у Фонбета · <span style="color:${r.X.ev >= 0 ? 'var(--accent)' : 'var(--red)'}">выгода ${r.X.ev >= 0 ? '+' : ''}${Math.round(r.X.ev * 100)}%</span>${r.X.ev < 0 ? '. Минус — это маржа букмекера, умноженная на число событий: чем длиннее экспресс, тем она больше.' : ''}</div>`;
   if (r.legs.length) h += `<div class="ai-foot">Нажмите на ставку, чтобы открыть матч и прогноз.</div>`;
   r.legs.forEach((l, i) => {
-    h += `<div class="bet ${l.risk}" data-mid="${esc(l.id)}"><div class="bet-top"><b>${i + 1}. ${esc(l.market)}</b><span class="bet-who">→ ${esc(l.desc)}</span><span class="bet-odd">кэф ${esc(l.odd)}</span><span class="bet-risk">${RISK[l.risk]}</span></div><div class="ex-leg-match">${esc(l.title)}</div><div class="bet-why">${esc(l.reason)}</div>${l.p ? `<div class="why">модель ${pct(l.p)}${l.pm ? ' · рынок ' + pct(l.pm) : ''} · выгода ${(() => { const e = evOf(l.p, l.push, l.odd); return (e >= 0 ? '+' : '') + Math.round(e * 100) + '%'; })()}</div>` : ''}</div>`;
+    h += `<div class="bet ${l.risk}" data-mid="${esc(l.id)}"><div class="bet-top"><b>${i + 1}. ${esc(l.market)}</b><span class="bet-who">→ ${esc(l.desc)}</span><span class="bet-odd">кэф ${esc(l.odd)}</span><span class="bet-risk">${RISK[l.risk]}</span></div><div class="ex-leg-match">${esc(l.title)}</div><div class="bet-why">${esc(l.reason)}</div>${l.p ? `<div class="why">${l.pm ? 'рынок ' + pct(l.pm) + ' → ' : ''}модель ${pct(l.pbase ?? l.p)}${l.pAI !== null && l.pAI !== undefined ? ' · ИИ ' + pct(l.pAI) : ''} → итог <b>${pct(l.p)}</b> · выгода ${(() => { const e = evOf(l.p, l.push || 0, l.odd); return (e >= 0 ? '+' : '') + Math.round(e * 100) + '%'; })()}</div>` : ''}${l.critic ? `<div class="why">🧐 ${esc(l.critic)}</div>` : ''}</div>`;
   });
   if (!r.saved) h += `<div class="cf-row exp-conf">${stakeCtl('exp:new', r.total.toFixed(2))}<button class="cf-btn" id="exConfirm">✅ Подтвердить экспресс</button></div><div class="hint" style="text-align:left">Экспресс попадёт в «📚 Мои экспрессы» и будет отслеживаться только после подтверждения. Коэффициенты фиксируются на момент подтверждения.</div>`;
   else h += `<div class="ai-sum">✅ Экспресс подтверждён: ставка ${rub(r.stake)}, общий кэф ${r.total.toFixed(2)}, возможный выигрыш ${rub(r.stake * r.total)}. Слежу за ним во вкладке «📚 Мои экспрессы».</div>`;
   h += `<div class="ai-foot">Собрано в ${clock(r.at)} по коэффициентам на этот момент. Чем больше событий, тем ниже шанс, что экспресс пройдёт целиком. ИИ не знает исходов, это не гарантия.</div><button class="btn-more" id="exCopy">📋 Копировать экспресс</button></div>`;
   el.innerHTML = h;
-  if (el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (scroll !== false && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 function confirmExpress(){
   const r = expResult; if (!r || r.state !== 'done' || r.saved) return;
   const stake = readStake($('exResult').querySelector('.exp-conf'), 'exp:new');
   if (!(stake > 0)){ toast('Введите сумму ставки'); return; }
   const gone = [];
-  r.legs.forEach(l => { const m = matchById[String(l.id)]; if (!m || m.status === 'finished' || m.blocked){ gone.push(l); return; } const v = Number(m.odds[l.market]); if (v > 1) l.odd = v; });
+  r.legs.forEach(l => { const m = matchById[String(l.id)]; if (!m || m.status === 'finished' || m.blocked){ gone.push(l); return; } const v = Number(m.odds[l.market]); if (v > 1){ l.odd = v; if (l.p !== null && l.p !== undefined) l.ev = evOf(l.p, l.push || 0, v); } });
   if (gone.length){ toast(`Событий уже нет в линии или приём закрыт: ${gone.length}. Соберите экспресс заново.`); return; }
   r.total = r.legs.reduce((a, l) => a * l.odd, 1);
   const X = expressMath(r.legs);
-  const ex = saveExpress(r.legs, r.summary, r.total);
-  ex.stake = stake; ex.prov = r.prov || ''; ex.model = r.model || ''; ex.mode = 'express'; if (X){ ex.prob = X.prob; ex.ev = X.ev; r.X = X; }
+  const meta = { prov: r.prov || '', model: r.model || '', mode: r.mode || 'express', scoutProv: r.scoutProv || '', scoutModel: r.scoutModel || '' };
+  const ex = saveExpress(r.legs, r.summary, r.total, meta);
+  Object.assign(ex, meta, { kind: 'express', stake }); if (X){ ex.prob = X.prob; ex.ev = X.ev; r.X = X; }
   saveStore(); renderStats();
-  r.saved = ex.eid; r.stake = stake; delete stakeDraft['exp:new'];
+  r.saved = ex.eid; r.stake = stake; delete stakeDraft['exp:new']; saveExpDraft();
   renderExpressResult();
   toast(`✅ Экспресс подтверждён: ${rub(stake)} по кэф ${r.total.toFixed(2)} → возможный выигрыш ${rub(stake * r.total)}`);
 }
+/* ================= Сборка экспресса: тот же конвейер, что и разбор одного матча =================
+   статистика матч-центра Фонбета → модель → (разведка) → аналитик → (второй расчёт + критик) → итог = модель + доля поправки ИИ */
+async function poolMap(xs, k, fn){
+  const out = new Array(xs.length); let i = 0;
+  await Promise.all([...Array(Math.min(k, xs.length))].map(async () => { while (i < xs.length){ const j = i++; try { out[j] = await fn(xs[j], j); } catch (e){ out[j] = null; } } }));
+  return out;
+}
+async function ssisFor(m){
+  const S = ssisState[m.id];
+  if (S && S.state === 'done' && S.F && Date.now() - S.at < 30 * 60e3) return S.F;
+  try { return await ssisBundle(m); } catch (e){ ssisState[m.id] = { state: 'error', at: Date.now(), err: e.message }; return null; }
+}
+const EXP_KEY_OK = k => /^(П1|X|П2|1X|X2|12|ОЗ да|ОЗ нет)$|^(Ф[12]|Т[БМ]|ИТ[12][БМ])\(/.test(k);
+/* варианты ставок на событие по модели, лучшие сверху */
+function expOptions(m){
+  const M = modelFor(m), rows = [];
+  if (M) Object.entries(M.probs).forEach(([k, v]) => { const odd = Number(m.odds[k]); if (!(odd >= 1.1 && odd <= 6)) return; rows.push({ k, p: v.p, pm: v.pm, pmod: v.pmod, push: v.push || 0, odd, ev: evOf(v.p, v.push || 0, odd) }); });
+  else Object.keys(m.odds).filter(EXP_KEY_OK).forEach(k => { const odd = Number(m.odds[k]), pm = marketProb(m, k); if (!(odd >= 1.1 && odd <= 6) || !pm) return; rows.push({ k, p: pm, pm, pmod: null, push: 0, odd, ev: evOf(pm, 0, odd) }); });
+  rows.forEach(r => { r.risk = riskFrom(r.p); r.score = r.ev + 0.05 * r.p; });
+  return rows.sort((a, b) => b.score - a.score);
+}
+function expBest(m, allowed, strict){
+  const rows = expOptions(m), ok = rows.filter(r => allowed.includes(r.risk));
+  return ok[0] || (strict ? null : rows.slice().sort((a, b) => b.p - a.p)[0] || null);
+}
+const expRow = r => `${r.k}: кэф ${r.odd} | рынок без маржи ${pct(r.pm)} | по статистике ${pct(r.pmod)} | итог модели ${pct(r.p)}${r.push > 0.005 ? ` (+возврат ${pct(r.push)})` : ''} | выгода ${r.ev >= 0 ? '+' : ''}${Math.round(r.ev * 100)}% | риск ${r.risk}`;
+function expEventText(m, F, C, allowed, budget){
+  const odds = Object.fromEntries(Object.entries(m.odds).filter(([k]) => EXP_KEY_OK(k) && (!m.prim || !m.prim.length || m.prim.includes(k) || /^(ОЗ |ИТ[12][БМ]\((0\.5|1\.5)\))/.test(k))).slice(0, 18));
+  let t = `=== [id=${m.id}] ${m.sport}. ${m.league} | ${m.team1} — ${m.team2} | ${m.status === 'live' ? 'LIVE ' + fmtTimer(m, false) + ', счёт ' + m.score : 'начало ' + fmtStart(m)}\nКОЭФ: ${JSON.stringify(odds)}\n`;
+  const rows = expOptions(m), ok = rows.filter(r => allowed.includes(r.risk)).slice(0, 6), more = rows.filter(r => !ok.includes(r)).sort((a, b) => b.p - a.p).slice(0, 2);
+  t += rows.length ? 'ВЕРОЯТНОСТИ ПРОГРАММЫ (модель: рынок без маржи + статистика):\n' + ok.concat(more).map(expRow).join('\n') + '\n' : 'Модель не построена: опирайся на коэффициенты.\n';
+  let st = '';
+  if (F){ const sT = F.SI ? standingsText(F.SI, [F.P1, F.P2].filter(Boolean).map(x => String(x.id))) : ''; st = (sT ? sT.split('\n').slice(1).join(' ') + '\n' : '') + statsText(m.team1, F.A, m.sportKey) + '\n' + statsText(m.team2, F.B, m.sportKey); }
+  else { const before = m.start || Date.now() / 1000, A = m.t1id ? teamStats(m.t1id, before, 10) : null, B = m.t2id ? teamStats(m.t2id, before, 10) : null; if (A || B) st = statsText(m.team1, A, m.sportKey) + '\n' + statsText(m.team2, B, m.sportKey); }
+  if (st) t += 'СТАТИСТИКА ФОНБЕТА: ' + st.slice(0, budget) + '\n';
+  const mv = movementText(m); if (mv) t += mv + '\n';
+  const sc = C && C.scout && C.scout.data;
+  if (sc) t += 'РАЗВЕДКА В ИНТЕРНЕТЕ: ' + JSON.stringify({ lineups: sc.lineups, absences: (sc.absences || []).slice(0, 8), key_players: (sc.key_players || []).slice(0, 4), motivation: sc.motivation, schedule: sc.schedule, standings: sc.standings, data_quality: sc.data_quality }).slice(0, 1800) + '\n';
+  if (C && C.afb) t += afbText(C.afb).slice(0, 900) + '\n';
+  if (C && C.W) t += weatherText(C.W) + '\n';
+  return t;
+}
+function buildExpressPrompt(evs, n, auto, allowed, pool, scouted){
+  const RL = { low: 'low — надёжная (итоговая вероятность от 70%)', medium: 'medium — средний риск (50–70%)', high: 'high — рискованная (ниже 50%)' };
+  const q = [...new Set(pool.map(m => m.sportKey))].slice(0, 3).map(qualityText).filter(Boolean).join('; ');
+  return `Собери экспресс из ${n} событий. ${auto ? `Выбери из списка РОВНО ${n} событий и ещё до 3 запасных (reserve:true) на случай, если ставку снимут` : `Используй ВСЕ ${n} событий из списка`}; для каждого события ОДНА ставка.
+Разрешённые уровни риска: ${allowed.map(k => RL[k]).join('; ')}. ${auto ? 'Бери только ставки этих уровней.' : 'По возможности бери ставки этих уровней.'}
+КАК РАБОТАТЬ (так же, как при разборе одного матча):
+1) Основа — «итог модели» (рынок без маржи + статистика матч-центра и архива Фонбета). Рынок обычно точен: отклоняйся, только если есть конкретные факты (составы, травмы ключевых игроков, вратарь, мотивация, усталость, переезд, погода) или сильный сигнал статистики. Поправка обычно 1–6 п.п., больше 10 п.п. — только при очень сильных фактах.
+2) prob — твоя итоговая вероятность ставки в процентах (итог модели + поправки).
+3) В экспрессе маржа букмекера перемножается: выбирай исходы с высокой вероятностью и выгодой не хуже −3%, не бери зависимые события.
+4) ${scouted ? 'Разведка в интернете есть только у части событий: по остальным будь осторожнее.' : 'Разведки в интернете нет: составы и новости неизвестны, будь осторожнее.'} Мало данных (низшие лиги) — снижай уверенность. Факты только из данных ниже, ничего не выдумывай.
+${q ? 'ТОЧНОСТЬ ПРОШЛЫХ ПРОГНОЗОВ ПРОГРАММЫ (не завышай уверенность): ' + q + '\n' : ''}СОБЫТИЯ:
+${evs.join('\n')}
+Ответь ТОЛЬКО JSON: {"summary":"1-2 предложения о логике экспресса","legs":[{"id":число из списка,"market":"точный ключ из КОЭФ этого события: П1, X, П2, 1X, ТБ(2.5), Ф1(-1.5), ИТ1Б(1.5), ОЗ да…","prob":57,"risk":"low|medium|high","reserve":false,"reason":"1-2 предложения с фактами и цифрами, команды называй по имени"}]}. Русский язык.`;
+}
+function buildExpressCriticPrompt(raw, ctxs){
+  const rows = raw.map(x => {
+    const m = matchById[String(x.id)]; if (!m) return '';
+    const M = modelFor(m), v = M && M.probs[x.key], sc = ctxs[x.id] && ctxs[x.id].scout && ctxs[x.id].scout.data, mv = movementText(m);
+    return `[id=${m.id}] ${m.team1} — ${m.team2} (${m.league}, ${m.status === 'live' ? 'идёт, счёт ' + m.score : 'начало ' + fmtStart(m)}) | ставка ${x.key} (${describeBet(m, x.key)}), кэф ${m.odds[x.key]} | модель ${pct(v ? v.p : marketProb(m, x.key))} | аналитик ${x.prob ? Math.round(x.prob) + '%' : '—'} | ${x.reason}${sc ? ' | разведка: ' + JSON.stringify({ absences: (sc.absences || []).slice(0, 6), lineups: sc.lineups }).slice(0, 700) : ''}${mv ? ' | ' + mv : ''}`;
+  }).filter(Boolean).join('\n');
+  return `Перепроверь экспресс аналитика. По каждой ставке ищи: факты, противоречащие данным; устаревшие новости; нереальные проценты; пропущенные важные отсутствия; ставку против сильного движения линии; ставку без выгоды; зависимые события.
+СТАВКИ ЭКСПРЕССА:
+${rows}
+Ответь ТОЛЬКО JSON: {"legs":[{"id":число,"market":"как у аналитика","keep":true,"prob":число 1-99,"why":"коротко"}],"notes":"главные замечания одним-двумя предложениями"}`;
+}
+function expRawLegs(arr){
+  const seen = new Set(), out = [];
+  (Array.isArray(arr) ? arr : []).forEach(l => {
+    const m = matchById[String(l && l.id)]; if (!m || seen.has(String(m.id))) return;
+    const key = resolveKey(m, l.market); if (!key || !(Number(m.odds[key]) > 1)) return;
+    seen.add(String(m.id));
+    out.push({ id: m.id, key, prob: Number(l.prob) > 0 && Number(l.prob) < 100 ? Number(l.prob) : null, risk: l.risk, reserve: !!l.reserve, reason: String(l.reason || '') });
+  });
+  return out;
+}
+/* «Максимум»: два независимых расчёта; совпавшие ставки усредняются и идут первыми */
+function expMerge(a, b){
+  const out = a.map(x => Object.assign({}, x));
+  b.forEach(y => {
+    const x = out.find(z => String(z.id) === String(y.id));
+    if (x && x.key === y.key){ x.both = true; x.prob = x.prob && y.prob ? (x.prob + y.prob) / 2 : (x.prob || y.prob); x.reserve = x.reserve && y.reserve; }
+    else if (x) x.reason += ` (второй расчёт предлагал ${y.key})`;
+    else out.push(Object.assign({}, y, { reserve: true, reason: y.reason + ' (это событие выбрал только второй расчёт)' }));
+  });
+  out.forEach(x => { if (!x.both && !/второй расчёт/.test(x.reason)) x.reason += ' (ставку предложил только один из двух расчётов)'; });
+  return out;
+}
+/* итоговая вероятность ноги — как в разборе матча: модель + доверенная доля мнения ИИ */
+function expFinalLeg(m, x, c){
+  const key = x.key, odd = Number(m.odds[key]); if (!(odd > 1)) return null;
+  const alpha = shrinkAlpha(m.sportKey), M = modelFor(m), mp = M && M.probs[key] ? M.probs[key] : null, pm = marketProb(m, key) || null;
+  const base = mp ? mp.p : pm;
+  let pAI = Number(x.prob) / 100; if (!(pAI > 0 && pAI < 1)) pAI = null;
+  if (c && Number(c.prob) > 0 && Number(c.prob) < 100){ const pc = Number(c.prob) / 100; pAI = pAI === null ? pc : (pAI + pc) / 2; }
+  let pf = pAI; if (base !== null && pAI !== null) pf = base + alpha * (pAI - base); else if (pf === null) pf = base;
+  const push = mp ? mp.push || 0 : 0;
+  return { id: m.id, market: key, desc: describeBet(m, key), odd, p: pf, pm, pmod: mp ? mp.pmod : null, pbase: base, pAI, push, alpha, ev: pf !== null ? evOf(pf, push, odd) : null,
+    risk: pf !== null ? riskFrom(pf) : (['low', 'medium', 'high'].includes(x.risk) ? x.risk : 'medium'), reason: x.reason, critic: c && c.why ? String(c.why) : '', reserve: !!x.reserve, both: !!x.both,
+    title: `${m.sportIcon} ${m.league} · ${m.team1} — ${m.team2} (${m.status === 'live' ? '🔴 ' + m.score : fmtStart(m)})` };
+}
+function saveExpDraft(){
+  try { if (expResult && expResult.state === 'done' && !expResult.saved) localStorage.setItem('fb_expres', JSON.stringify(expResult)); else localStorage.removeItem('fb_expres'); } catch (e){}
+}
 async function buildExpress(){
+  if (expResult && expResult.state === 'loading') return;
   const allowedRisk = Object.keys(expRisk).filter(k => expRisk[k]);
-  const cands = expCandidates();
+  const mode = $('anMode') ? $('anMode').value : 'quick';
   const sel = [...expSel].map(id => matchById[id]).filter(m => m && m.status !== 'finished' && Object.keys(m.odds).length);
   const auto = !sel.length;
+  const fail = t => { expResult = { state: 'error', text: t }; saveExpDraft(); renderExpressResult(); };
   let list, n;
   if (!auto){
-    if (sel.length < 3 || sel.length > 30){ expResult = { state:'error', text:`⚠️ Для ручного выбора отметьте от 3 до 30 событий (сейчас ${sel.length}).` }; renderExpressResult(); return; }
+    if (sel.length < 3 || sel.length > 30) return fail(`⚠️ Для ручного выбора отметьте от 3 до 30 событий (сейчас ${sel.length}).`);
     list = sel; n = sel.length;
   } else {
-    list = cands.slice().sort((a, b) => topScore(b) - topScore(a)).slice(0, 40);
-    n = Math.min(expN, list.length);
-    if (n < 3){ expResult = { state:'error', text:'⚠️ Для авто-экспресса нужно минимум 3 подходящих события. Смените источник, спорт или фильтр даты.' }; renderExpressResult(); return; }
+    list = expCandidates().sort((a, b) => topScore(b) - topScore(a)).slice(0, 40);
+    if (Math.min(expN, list.length) < 3) return fail('⚠️ Для авто-экспресса нужно минимум 3 подходящих события. Смените источник, спорт или фильтр даты.');
   }
-  expResult = { state:'loading' }; renderExpressResult();
-  const lines = list.map(m => `[id=${m.id}] ${m.league} | ${m.team1} — ${m.team2} | ${m.status === 'live' ? 'LIVE ' + fmtTimer(m, false) + ', счёт ' + m.score : 'начало ' + fmtStart(m)} | коэф: ${JSON.stringify(Object.fromEntries(Object.entries(m.odds).filter(([k]) => !m.prim || !m.prim.length || m.prim.includes(k) || /^(ОЗ |ИТ[12][БМ]\((0\.5|1\.5)\))/.test(k)).slice(0, 18)))}${(() => { const x = expHint(m); return x ? ' | модель: ' + x : ''; })()}`).join('\n');
-  const prompt = `Собери экспресс из ${n} событий. ${auto ? 'Выбери из списка РОВНО ' + n + ' событий' : 'Используй ВСЕ ' + n + ' событий из списка'}, для каждого дай ОДНУ ставку: наиболее вероятный и нерискованный исход (market — точное название из коэффициентов этого события, например П1, X, П2, Ф1(0), ТБ(2.5)). Разрешённые уровни риска ставок: ${allowedRisk.join(', ')} (low — надёжная, medium — средний риск, high — рискованная). ${auto ? 'Выбирай ТОЛЬКО ставки этих уровней; если для события такой ставки нет, не включай его.' : 'По возможности выбирай ставки этих уровней.'}\nУ событий указаны вероятности модели программы (рынок + статистика) и выгода: предпочитай исходы с высокой вероятностью и неотрицательной выгодой, не бери два события, которые зависят друг от друга.\nСобытия:\n${lines}\n\nОтветь ТОЛЬКО JSON: {"summary":"1-2 предложения о логике экспресса","legs":[{"id":число из списка,"market":"...","risk":"low|medium|high","reason":"кратко, называй команды по названию, а не П1/П2"}]}. Русский язык.`;
+  const job = { state: 'loading', mode, stage: '📐 Модель отбирает события...' };
+  expResult = job; renderExpressResult();
+  const stage = t => { if (expResult === job){ job.stage = t; renderExpressResult(); } };
+  const notes = [], ctxs = {}, riskTxt = allowedRisk.map(k => RISK[k]).join(', ');
+  const rank = xs => xs.map(m => { const b = expBest(m, allowedRisk, true); return { m, s: b ? b.score + ((modelFor(m) || {}).w > 0 ? 0.01 : 0) : null }; }).filter(x => x.s !== null).sort((a, b) => b.s - a.s).map(x => x.m);
+  const fewErr = () => new Error(`⚠️ Модель нашла меньше 3 событий со ставками разрешённого риска (${riskTxt}). Разрешите больше уровней риска или смените фильтр.`);
   try {
-    const rr = await aiRequest(prompt, { json: true });
-    const d = parseBets(rr.text);
-    const seen = new Set(), legs = [];
-    (d && Array.isArray(d.legs) ? d.legs : []).forEach(l => {
-      const m = matchById[String(l.id)]; if (!m || seen.has(String(m.id))) return;
-      const key = resolveKey(m, l.market), odd = key ? Number(m.odds[key]) : Number(l.odds);
-      if (!odd || isNaN(odd)) return;
-      seen.add(String(m.id));
-      legs.push({ id: m.id, market: key || String(l.market || ''), desc: describeBet(m, key || l.market), odd, risk: ['low', 'medium', 'high'].includes(l.risk) ? l.risk : 'medium', reason: l.reason || '',
-        title: `${m.sportIcon} ${m.league} · ${m.team1} — ${m.team2} (${m.status === 'live' ? '🔴 ' + m.score : fmtStart(m)})` });
+    // 1) предварительный отбор моделью (без сети и без токенов)
+    let pool = list;
+    if (auto){ pool = rank(list).slice(0, Math.min(20, Math.max(expN + 6, 12))); if (pool.length < 3) throw fewErr(); }
+    // 2) статистика матч-центра Фонбета: таблица, форма, составы (уточняет модель)
+    let k = 0;
+    stage(`📊 Статистика Фонбета: 0 из ${pool.length}...`);
+    const Fs = await poolMap(pool, 4, async m => { const F = await ssisFor(m); stage(`📊 Статистика Фонбета: ${++k} из ${pool.length}...`); return F; });
+    const FB = {}; pool.forEach((m, i) => { FB[m.id] = Fs[i]; });
+    const nStats = Fs.filter(Boolean).length;
+    // 3) окончательный отбор по модели со статистикой
+    if (auto){ pool = rank(pool); if (pool.length < 3) throw fewErr(); n = Math.min(expN, pool.length); }
+    let raw = [], summary = '', prov = '', model = '', scoutProv = '', scoutModel = '', critic = null, nScout = 0, nCtx = 0;
+    if (mode === 'math'){
+      pool.map(m => ({ m, b: expBest(m, allowedRisk, auto) })).filter(x => x.b).slice(0, n).forEach(({ m, b }) => raw.push({ id: m.id, key: b.k, prob: null, reserve: false,
+        reason: `Модель: рынок без маржи ${pct(b.pm)}${b.pmod !== null && b.pmod !== undefined ? ', по статистике ' + pct(b.pmod) : ''}, итог ${pct(b.p)} → выгода ${b.ev >= 0 ? '+' : ''}${Math.round(b.ev * 100)}%.` }));
+      summary = 'Собрано моделью без ИИ: для каждого события выбрана ставка разрешённого риска с лучшей выгодой (рынок без маржи + статистика матч-центра и архива Фонбета).';
+    } else {
+      // 4) разведка в интернете, API-Football, погода — для лучших по модели событий
+      if (mode === 'deep' || mode === 'max'){
+        const top = pool.slice(0, auto ? Math.min(pool.length, n + 2, 8) : Math.min(pool.length, 12));
+        let j = 0;
+        stage(`🔎 Разведчик (${aiName(searchProv() || aiCfg.prov)}) ищет составы и новости: 0 из ${top.length}...`);
+        await poolMap(top, 2, async m => {
+          const nt = []; ctxs[m.id] = await gatherCtx(m, mode, false, nt);
+          nt.forEach(x => notes.push(`${m.team1} — ${m.team2}: ${x}`));
+          stage(`🔎 Разведка: ${++j} из ${top.length}...`);
+        });
+        const sc = Object.values(ctxs).find(c => c && c.scout && c.scout.prov);
+        if (sc){ scoutProv = sc.scout.prov; scoutModel = sc.scout.model || ''; }
+        nScout = Object.values(ctxs).filter(c => c && c.scout && c.scout.data).length; nCtx = top.length;
+        if (pool.length > top.length) notes.push(`Разведка сделана для ${top.length} лучших по модели событий из ${pool.length}, чтобы не тратить лимит ИИ.`);
+      }
+      const evs = pool.map(m => expEventText(m, FB[m.id], ctxs[m.id], allowedRisk, Math.max(400, Math.floor(30000 / pool.length))));
+      const prompt = buildExpressPrompt(evs, n, auto, allowedRisk, pool, nScout > 0);
+      stage(`🧠 Аналитик (${aiName()}) собирает экспресс...`);
+      const runA = async () => { const r = await aiRequest(prompt, { json: true, thinking: true, temp: 0.3, system: SYS_ANALYST, maxTokens: 8000 }); return { d: parseBets(r.text), r }; };
+      const A1 = await runA();
+      if (!A1.d || !Array.isArray(A1.d.legs)) throw new Error(`⚠️ ${aiName(A1.r.prov)} ответил не в формате JSON. Попробуйте ещё раз.`);
+      prov = A1.r.prov; model = A1.r.model; summary = String(A1.d.summary || '');
+      raw = expRawLegs(A1.d.legs);
+      // ручной выбор: если ИИ пропустил событие или назвал рынок, которого нет в линии, берём ставку модели
+      if (!auto) pool.forEach(m => {
+        if (raw.some(x => String(x.id) === String(m.id))) return;
+        const b0 = expBest(m, allowedRisk, false); if (!b0) return;
+        raw.push({ id: m.id, key: b0.k, prob: null, reserve: false, reason: `ИИ не дал по этому событию ставки из линии — взята ставка модели: итог ${pct(b0.p)}, выгода ${b0.ev >= 0 ? '+' : ''}${Math.round(b0.ev * 100)}%.` });
+        notes.push(`${m.team1} — ${m.team2}: ИИ не дал ставки из линии, взята ставка модели.`);
+      });
+      if (mode === 'max'){
+        stage('🧠 Второй независимый расчёт...');
+        try { const A2 = await runA(); if (A2.d && Array.isArray(A2.d.legs)) raw = expMerge(raw, expRawLegs(A2.d.legs)); } catch (e){ notes.push('Второй расчёт не удался: ' + e.message); }
+        stage('🧐 Критик перепроверяет экспресс...');
+        try { critic = parseBets((await aiRequest(buildExpressCriticPrompt(raw, ctxs), { json: true, temp: 0.2, system: SYS_CRITIC, maxTokens: 3000 })).text); } catch (e){ notes.push('Критик не ответил: ' + e.message); }
+      }
+    }
+    // 5) итоговая вероятность, риск и выгода каждой ставки — как в разборе матча
+    const dropped = [], legs = [];
+    raw.forEach(x => {
+      const m = matchById[String(x.id)]; if (!m) return;
+      const c = critic && Array.isArray(critic.legs) ? critic.legs.find(y => String(y.id) === String(x.id) && (!y.market || resolveKey(m, y.market) === x.key)) : null;
+      if (c && c.keep === false){ dropped.push({ title: `${m.team1} — ${m.team2}`, market: x.key, why: String(c.why || 'снята критиком') }); return; }
+      const l = expFinalLeg(m, x, c); if (l) legs.push(l);
     });
-    legs.forEach(l => { const m = matchById[String(l.id)], q = m ? legProb(m, l.market) : null; l.p = q ? q.p : null; l.pm = q ? q.pm : null; l.push = q ? q.push : 0; if (q) l.risk = riskFrom(q.p); });
-    const used = (auto ? legs.filter(l => allowedRisk.includes(l.risk)) : legs).slice(0, n);
-    if (!used.length) throw new Error(legs.length ? '⚠️ ИИ предложил ставки только другого уровня риска. Разрешите больше уровней риска или повторите.' : '⚠️ ИИ не вернул распознаваемых ставок. Попробуйте ещё раз.');
-    const total = used.reduce((p, l) => p * l.odd, 1);
-    const X = expressMath(used);
-    expResult = { state:'done', legs: used, total, summary: (d && d.summary) || '', at: Date.now(), X, saved: null, prov: rr.prov, model: rr.model, mode: 'express' };
-  } catch (err){ expResult = { state:'error', text: err.message }; }
+    let used = legs;
+    if (auto){ used = legs.filter(l => allowedRisk.includes(l.risk)).sort((a, b) => (a.reserve - b.reserve) || (b.both - a.both)).slice(0, n); }
+    if (!used.length) throw new Error(legs.length ? '⚠️ После пересчёта вероятности все ставки оказались другого уровня риска. Разрешите больше уровней риска или повторите.' : (dropped.length ? '⚠️ Критик снял все ставки экспресса. Соберите заново или смените события.' : '⚠️ ИИ не вернул распознаваемых ставок. Попробуйте ещё раз.'));
+    if (used.length < 2) throw new Error('⚠️ Осталась одна подходящая ставка, а для экспресса нужно минимум 2. Разрешите больше уровней риска или выберите другие события.');
+    if (auto && used.length < n) notes.push(`Ставок разрешённого риска (${riskTxt}) нашлось ${used.length} из ${n}.`);
+    if (!auto){ const off = used.filter(l => !allowedRisk.includes(l.risk)).length; if (off) notes.push(`${off} ${plural(off, 'ставка', 'ставки', 'ставок')} с другим уровнем риска, чем выбрано (${riskTxt}): для этих событий подходящей ставки не нашлось.`); }
+    used.forEach(l => { delete l.reserve; });
+    const total = used.reduce((a, l) => a * l.odd, 1);
+    expResult = { state: 'done', kind: 'express', legs: used, total, summary, at: Date.now(), X: expressMath(used), saved: null, mode, prov, model, scoutProv, scoutModel,
+      notes, dropped, criticNote: (critic && critic.notes) ? String(critic.notes) : '', nStats, nScout, nCtx, nPool: pool.length };
+  } catch (err){ expResult = { state: 'error', text: err.message }; }
+  saveExpDraft();
   renderExpressResult();
 }
 function initExpress(){
@@ -3247,6 +3437,7 @@ function initExpress(){
     expSel.clear(); [...document.querySelectorAll('.ex-cb')].slice(0, 30).forEach(cb => expSel.add(cb.dataset.id)); rerender();
   });
   $('exBuild').addEventListener('click', buildExpress);
+  try { const d = JSON.parse(localStorage.getItem('fb_expres') || 'null'); if (d && d.state === 'done' && !d.saved && Date.now() - d.at < 6 * 3600e3 && Array.isArray(d.legs)){ expResult = d; renderExpressResult(false); } } catch (e){}
   document.querySelectorAll('#expressPanel [data-risk]').forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.risk, next = Object.assign({}, expRisk, { [k]: !expRisk[k] });
     if (!Object.values(next).some(Boolean)) return;
@@ -3308,6 +3499,7 @@ function savedMatchHtml(mid){
 function openMatchModal(id){
   const m = matchById[String(id)];
   if (!m && !preds.some(p => p.mid === String(id)) && !analyses.some(a => a.mid === String(id))){ toast('Матч уже недоступен'); return; }
+  restoreAi(m);
   if (m && !aiResults[m.id] && expResult && expResult.state === 'done'){
     const leg = expResult.legs.find(l => String(l.id) === String(m.id));
     if (leg) aiResults[m.id] = { state:'done', raw:'', at: expResult.at, score: m.score,
@@ -3355,7 +3547,7 @@ function loadStore(){
   preds = get('fb_preds', []); exps = get('fb_exps', []); track = get('fb_track', {}); analyses = get('fb_analyses', []); hist = get('fb_hist', []);
 }
 /* ----- перенос данных между устройствами ----- */
-const EXP_SKIP = /^fb_(open|scout|afb_used)$/, KEY_ITEMS = /^fb_(ai_keys|ai_idx|keys|key_idx|gemini)$/;
+const EXP_SKIP = /^fb_(open|scout|afb_used|expres)$/, KEY_ITEMS = /^fb_(ai_keys|ai_idx|keys|key_idx|gemini)$/;
 const MERGE_ID = { fb_preds: 'pid', fb_exps: 'eid', fb_analyses: 'aid', fb_hist: 'id' };
 function exportAll(){
   const withKeys = $('expKeys').checked, out = { app: 'fonbet-ai-predictor', v: 1, at: new Date().toISOString(), keys: withKeys, data: {} };
@@ -3473,11 +3665,13 @@ function makePred(m, o){
     aiProv: o.aiProv || '', aiModel: o.aiModel || '', aiMode: o.aiMode || '', sProv: o.sProv || '', sModel: o.sModel || '',
     at: Date.now(), state: o.key ? 'pending' : 'unknown', note: o.key ? '' : 'ставка не распознана — отметьте вручную' };
 }
-function saveExpress(legs, summary, total){
+function saveExpress(legs, summary, total, meta){
+  meta = meta || {};
   const ex = { eid: uid('e'), at: Date.now(), summary, total, legs: [] };
   legs.forEach(l => {
     const m = matchById[String(l.id)]; if (!m) return;
-    const p = makePred(m, { src:'express', market: l.market, key: resolveKey(m, l.market), odd: l.odd, risk: l.risk, desc: l.desc, reason: l.reason, pf: l.p ?? null, pbase: l.p ?? null, pm: l.pm ?? null, prob: l.p ? Math.round(l.p * 1000) / 10 : null });
+    const p = makePred(m, { src:'express', market: l.market, key: resolveKey(m, l.market), odd: l.odd, risk: l.risk, desc: l.desc, reason: l.reason, pf: l.p ?? null, pbase: l.pbase ?? l.p ?? null, pAI: l.pAI ?? null, pm: l.pm ?? null, ev: l.ev ?? null, prob: l.p ? Math.round(l.p * 1000) / 10 : null,
+      aiProv: meta.prov, aiModel: meta.model, aiMode: meta.mode, sProv: meta.scoutProv, sModel: meta.scoutModel });
     p.eid = ex.eid; preds.push(p); ex.legs.push(p.pid);
   });
   exps.push(ex); saveStore(); renderStats();
@@ -3723,31 +3917,34 @@ function riskTable(ps, who){
 }
 function anBody(){
   const rg = hfRange();
-  const L = analyses.filter(a => {
+  const LA = analyses.filter(a => {   // все разборы за период и по поиску
     const t = a.ms ? a.ms * 1000 : a.at;
     if (!(t >= rg.from && t <= rg.to)) return false;
-    if (!hfMatchQ(hfText(a) + ' ' + a.bets.map(b => ((b.sub ? b.sub + ' ' : '') + b.market + ' ' + (b.desc || '')).toLowerCase()).join(' '))) return false;
-    return HF.res === 'all' || a.bets.some(b => { const p = predOf(b); return p && (anView !== 'conf' || !p.virtual) && hfResOk(p.state); });
+    return hfMatchQ(hfText(a) + ' ' + a.bets.map(b => ((b.sub ? b.sub + ' ' : '') + b.market + ' ' + (b.desc || '')).toLowerCase()).join(' '));
   });
-  const aids = new Set(L.map(a => a.aid));
-  const singles = preds.filter(p => p.src === 'single' && p.aid && aids.has(p.aid)), mine = singles.filter(p => !p.virtual);
-  const conf = L.filter(a => a.bets.some(isMine)).reverse(), fresh = L.filter(a => !a.bets.some(isMine)).reverse();
-  let h = `<div class="top-sec">📈 Аналитика ставок</div>` + tallyHtml('Мои ставки (подтверждённые):', tally(mine.map(p => p.state))) + tallyHtml('Все прогнозы ИИ (включая неподтверждённые):', tally(singles.map(p => p.state)));
+  // во вкладку попадают только разборы с подтверждёнными ставками
+  const L = LA.filter(a => a.bets.some(b => { const p = predOf(b); return p && !p.virtual && hfResOk(p.state); }));
+  const aidsA = new Set(LA.map(a => a.aid));
+  const singles = preds.filter(p => p.src === 'single' && p.aid && aidsA.has(p.aid));
+  const mine = singles.filter(p => !p.virtual && hfResOk(p.state));
+  let h = `<div class="top-sec">📈 Аналитика моих ставок</div>` + tallyHtml('Мои ставки (подтверждённые):', tally(mine.map(p => p.state)));
   h += moneyPanel('💰 Деньги по моим ставкам', moneySum(mine.map(predMoney)));
+  h += riskTable(mine, 'моих ставок');
+  h += accuracyHtml(mine, { title: 'моих ставок по типам' });
+  // для продвинутых: все прогнозы ИИ, включая неподтверждённые (в аналитику и деньги не входят)
+  const unconf = LA.filter(a => !a.bets.some(isMine)).length;
   const virt = singles.filter(p => p.virtual && ['won', 'lost', 'void'].includes(p.state));
-  if (virt.length){ const sd = stakeDef(), V = moneySum(virt.map(p => { const k = predMult(p); return { stake: sd, ret: sd * k, profit: sd * k - sd, odd: Number(p.odd) || 1 }; })); h += `<div class="mp-s" style="margin:-2px 0 8px">🤖 Если бы ставили по ${rub(sd)} на все неподтверждённые прогнозы ИИ (${V.n}): поставлено ${rub(V.staked)}, заработано ${posR(V.wonAmt)}, проиграно ${negR(V.lostAmt)}, итог <b class="${V.profit >= 0 ? 'good' : 'bad'}">${sgnRub(V.profit)} (${pctS(V.roi)})</b>.</div>`; }
-  h += riskTable(mine.length ? mine : singles, mine.length ? 'моих ставок' : 'всех прогнозов ИИ');
-  const sets = [['mine', '⭐ Мои ставки'], ['all', '🤖 Все прогнозы ИИ']].map(([k, l]) => `<button data-accs="${k}" class="${accSet === k ? 'active' : ''}">${l}</button>`).join('');
-  h += accuracyHtml(accSet === 'mine' ? mine : singles, { sets });
-  h += `<details class="man"><summary>🔬 Для продвинутых: честность вероятностей и качество модели</summary>${calibrationHtml(singles)}${qualityHtml()}</details>`;
-  h += `<div class="ex-row">` + [['all', `Все (${L.length})`], ['conf', `⭐ Мои ставки (${conf.length})`], ['new', `Не подтверждены (${fresh.length})`]]
-    .map(([k, l]) => `<button data-av="${k}" class="${anView === k ? 'active' : ''}">${l}</button>`).join('') + `</div>`;
+  let adv = `<div class="hint" style="text-align:left">Здесь все прогнозы ИИ за период, в том числе ${unconf} ${plural(unconf, 'разбор', 'разбора', 'разборов')} без подтверждения. В вашу аналитику и деньги они не входят, но по ним программа учится, насколько верить ИИ. Подтвердить ставку из разбора можно в карточке матча, пока матч не закончился.</div>`;
+  adv += tallyHtml('Все прогнозы ИИ:', tally(singles.map(p => p.state)));
+  if (virt.length){ const sd = stakeDef(), V = moneySum(virt.map(p => { const k = predMult(p); return { stake: sd, ret: sd * k, profit: sd * k - sd, odd: Number(p.odd) || 1 }; })); adv += `<div class="mp-s" style="margin:-2px 0 8px">🤖 Если бы ставили по ${rub(sd)} на все неподтверждённые прогнозы ИИ (${V.n}): поставлено ${rub(V.staked)}, заработано ${posR(V.wonAmt)}, проиграно ${negR(V.lostAmt)}, итог <b class="${V.profit >= 0 ? 'good' : 'bad'}">${sgnRub(V.profit)} (${pctS(V.roi)})</b>.</div>`; }
+  adv += accuracyHtml(singles, { title: 'всех прогнозов ИИ' });
+  h += `<details class="man"><summary>🔬 Для продвинутых: все прогнозы ИИ и качество модели (не входят в вашу аналитику)</summary>${adv}${calibrationHtml(singles)}${qualityHtml()}</details>`;
   h += searchBar();
-  h += `<div class="hint">Укажите сумму и нажмите «Подтвердить»: ставка попадёт в «⭐ Мои ставки», программа сама проследит за матчем, проставит результат и посчитает выигрыш.</div>`;
-  if (!L.length) return h + `<div class="status-msg">${analyses.length ? 'По фильтру ничего не найдено.' : 'Анализов пока нет. Откройте любой матч и нажмите «⚡ AI Анализ матча».'}</div>`;
-  if (anView !== 'new') h += `<div class="top-sec">⭐ Мои ставки (${conf.length})</div>` + (conf.length ? conf.slice(0, 100).map(analysisCard).join('') : `<div class="status-msg">Пока нет подтверждённых ставок.</div>`);
-  if (anView !== 'conf') h += `<div class="top-sec">🤖 Разборы без подтверждения (${fresh.length})</div>` + (fresh.length ? fresh.slice(0, 100).map(analysisCard).join('') : `<div class="status-msg">Нет.</div>`);
-  return h;
+  h += `<div class="hint">Здесь только подтверждённые ставки. После «⚡ AI Анализ матча» укажите сумму и нажмите «✅ Подтвердить ставку» в карточке матча: ставка появится здесь, программа сама проследит за матчем, проставит результат и посчитает выигрыш.</div>`;
+  const conf = L.slice().reverse();
+  h += `<div class="top-sec">⭐ Мои ставки (${conf.length})</div>`;
+  if (!conf.length) return h + `<div class="status-msg">${analyses.some(a => a.bets.some(isMine)) ? 'По фильтру ничего не найдено.' : 'Подтверждённых ставок пока нет. Откройте матч, нажмите «⚡ AI Анализ матча», затем «✅ Подтвердить ставку».'}</div>`;
+  return h + conf.slice(0, 100).map(analysisCard).join('');
 }
 function renderAnalyses(){ return hfBar() + `<div id="hBody">${anBody()}</div>`; }
 
