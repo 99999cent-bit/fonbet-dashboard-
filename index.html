@@ -302,6 +302,9 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
     <button data-scope="live" class="active">🔴 Лайв</button><button data-scope="upcoming">📅 Будущие</button><button data-scope="all">Все</button></div>
   <div class="ex-row"><span>Риск ставок:</span>
     <button data-risk="low" class="active">🟢 Надёжные</button><button data-risk="medium">🟡 Средние</button><button data-risk="high">🔴 Рискованные</button></div>
+  <div class="ex-row"><span>Типы ставок:</span>
+    <button data-etype="Победа">🏆 Победа</button><button data-etype="Ничья">🤝 Ничья</button><button data-etype="Двойной шанс">🔀 Двойной шанс</button><button data-etype="Фора">⚖️ Фора</button><button data-etype="Тотал больше">⬆️ Тотал больше</button><button data-etype="Тотал меньше">⬇️ Тотал меньше</button><button data-etype="Инд. тотал">🎯 Инд. тотал</button><button data-etype="Обе забьют">⚽ Обе забьют</button></div>
+  <div class="hint" style="text-align:left;margin:-2px 0 6px">Типы не выбраны: программа сама подбирает разные типы ставок, где выгоднее и безопаснее. Выберите один или несколько, и экспресс будет только из них.</div>
   <div class="ex-row"><span>Дата матчей:</span>
     <button data-qd="all">Любая</button><button data-qd="today">Сегодня</button><button data-qd="tomorrow">Завтра</button><button data-qd="after">Послезавтра</button></div>
   <div class="hint" id="exFilters" style="text-align:left"></div>
@@ -343,6 +346,7 @@ details.man{font-size:11.5px;color:var(--muted);margin-top:4px}details.man summa
       </select>
       <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-top:8px"><input type="checkbox" id="detailChk" checked style="margin-top:3px"><span>📖 Полное обоснование по нажатию на ставку (ИИ пишет больше текста; выключите, чтобы тратить меньше токенов)</span></label>
       <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-top:8px"><input type="checkbox" id="scoutOtherChk" style="margin-top:3px"><span>🔎 Разведка в интернете через другой ИИ, если выбранный не умеет искать (например, DeepSeek). По умолчанию выключено: тогда всё делает только выбранный ИИ, а разведка пропускается. Включите, если нужен поиск составов и новостей через Gemini, Qwen или Claude. ИИ с исчерпанным лимитом пропускается сам.</span></label>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;margin-top:8px"><input type="checkbox" id="diverseChk" style="margin-top:3px"><span>🎲 Разнообразить типы ставок: в разборе матча 3–5 ставок разных типов (победа, двойной шанс, фора, тоталы, обе забьют), в экспрессе не больше ~40% ставок одного типа.</span></label>
       <div class="input-group" style="margin-top:8px"><label>🎯 Экспресс: для скольких событий делать разведку в интернете и запросы API-Football:</label>
         <select id="scoutN" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px">
           <option value="">По умолчанию (авто: до 8 лучших, ручной выбор: до 12)</option><option value="4">До 4 лучших событий</option><option value="8">До 8 лучших событий</option><option value="12">До 12 лучших событий</option><option value="20">До 20 лучших событий</option><option value="0">Без лимита: все события экспресса</option>
@@ -414,7 +418,7 @@ let sportsTouched = false, lastAutoOpen = null;
 const toggledMk = new Set(), aiResults = {};
 let topOrder = [], topSet = new Set(), topActive = false;
 let DC_MAP = (() => { try { return JSON.parse(localStorage.getItem('fb_dc') || '{}'); } catch (e){ return {}; } })();
-let currentPicks = {}, currentSub = -1, dt = null, expScope = 'live', expN = 5, expResult = null, expVisible = 0, expRisk = { low: true, medium: false, high: false };
+let currentPicks = {}, currentSub = -1, dt = null, expScope = 'live', expN = 5, expTypes = new Set(), expResult = null, expVisible = 0, expRisk = { low: true, medium: false, high: false };
 const expSel = new Set(), showAllMk = new Set();
 let modalId = null;
 let toastTimer = null;
@@ -1281,7 +1285,7 @@ const kOpen = new Set(), kShow = new Set();
 
 function loadAi(){
   const get = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v === null || v === undefined ? d : v; } catch (e){ return d; } };
-  aiCfg = Object.assign({ prov:'gemini', fallback:false, base:{}, model:{}, useAfb:true, scoutOther:false, scoutN:null }, get('fb_ai', {}));
+  aiCfg = Object.assign({ prov:'gemini', fallback:false, base:{}, model:{}, useAfb:true, scoutOther:false, scoutN:null, diverse:true }, get('fb_ai', {}));
   aiCfg.base = aiCfg.base || {}; aiCfg.model = aiCfg.model || {};
   aiKeys = get('fb_ai_keys', null); aiIdx = get('fb_ai_idx', {}) || {};
   if (!aiKeys || typeof aiKeys !== 'object'){
@@ -1722,6 +1726,8 @@ function initAiSettings(){
   $('afbUse').addEventListener('change', () => { aiCfg.useAfb = $('afbUse').checked; saveAi(); updAnHint(); });
   $('scoutN').value = aiCfg.scoutN === null || aiCfg.scoutN === undefined ? '' : String(aiCfg.scoutN);
   $('scoutN').addEventListener('change', () => { const v = $('scoutN').value; aiCfg.scoutN = v === '' ? null : Number(v); saveAi(); });
+  $('diverseChk').checked = aiCfg.diverse !== false;
+  $('diverseChk').addEventListener('change', () => { aiCfg.diverse = $('diverseChk').checked; saveAi(); });
   $('scoutOtherChk').checked = aiCfg.scoutOther === true;
   $('scoutOtherChk').addEventListener('change', () => { aiCfg.scoutOther = $('scoutOtherChk').checked; saveAi(); updAnHint(); });
   $('aiFallback').checked = !!aiCfg.fallback;
@@ -2528,6 +2534,56 @@ function buildModel(m){
 const evOf = (p, push, odd) => p * odd + (push || 0) - 1;
 function kellyOf(p, push, odd){ const b = odd - 1; if (!(b > 0)) return 0; const q = 1 - p - (push || 0); return Math.max(0, Math.min(0.03, (b * p - q) / b * 0.25)); }
 const pct = x => x === null || x === undefined || isNaN(x) ? '—' : Math.round(x * 100) + '%';
+/* ---- типы ставок для разнообразия ---- */
+const DIV_NAMES = ['Победа', 'Ничья', 'Двойной шанс', 'Фора', 'Тотал больше', 'Тотал меньше', 'Инд. тотал', 'Обе забьют'];
+const diverseOn = () => aiCfg.diverse !== false;
+function divOf(k){
+  k = String(k || '');
+  if (/^(П1|П2)$/.test(k)) return 'Победа';
+  if (k === 'X') return 'Ничья';
+  if (/^(1X|X2|12)$/.test(k)) return 'Двойной шанс';
+  if (/^Ф[12]/.test(k)) return 'Фора';
+  if (/^ТБ/.test(k)) return 'Тотал больше';
+  if (/^ТМ/.test(k)) return 'Тотал меньше';
+  if (/^ИТ[12]/.test(k)) return 'Инд. тотал';
+  if (/^ОЗ /.test(k)) return 'Обе забьют';
+  return 'Другое';
+}
+/* как обычно заканчиваются матчи в этом турнире (или по виду спорта): фон, на который опираемся, выбирая тип ставки */
+function baseRates(m){
+  try {
+    const before = m.start || Date.now() / 1000, A = m.t1id ? teamStats(m.t1id, before, 10) : null;
+    let rows = A && A.comp ? (ARC.comps.get(String(A.comp)) || []) : [], scope = 'в этом турнире';
+    if (rows.length < 30){ rows = []; ARC.comps.forEach(a => { if (a[0] && a[0].s === m.sportKey) a.forEach(r => rows.push(r)); }); scope = 'по виду спорта'; }
+    if (rows.length < 30) return null;
+    const n = rows.length, pc = f => Math.round(rows.filter(f).length / n * 100);
+    return { scope, n, hw: pc(r => r.x > r.y), dr: pc(r => r.x === r.y), aw: pc(r => r.x < r.y), avg: r1(rows.reduce((a, r) => a + r.x + r.y, 0) / n),
+      btts: pc(r => r.x > 0 && r.y > 0), o15: pc(r => r.x + r.y > 1.5), o25: pc(r => r.x + r.y > 2.5), o35: pc(r => r.x + r.y > 3.5), o55: pc(r => r.x + r.y > 5.5), sk: m.sportKey };
+  } catch (e){ return null; }
+}
+function baseRatesText(m){
+  const b = baseRates(m); if (!b) return '';
+  let t = `КАК ОБЫЧНО ЗАКАНЧИВАЮТСЯ МАТЧИ ${b.scope} (${b.n} матчей архива Фонбета): победа хозяев ${b.hw}%${b.dr ? ', ничья ' + b.dr + '%' : ''}, победа гостей ${b.aw}%; в среднем ${b.avg} в сумме`;
+  if (b.sk === 'football') t += `; обе забили ${b.btts}%; тотал больше 1.5 — ${b.o15}%, больше 2.5 — ${b.o25}%, больше 3.5 — ${b.o35}%`;
+  else if (b.sk === 'hockey') t += `; больше 5.5 — ${b.o55}%`;
+  return t + '. Это фон: конкретный матч оценивай по его данным.\n';
+}
+function baseRatesShort(m){
+  const b = baseRates(m); if (!b) return '';
+  return `ФОН ${b.scope}: хозяева ${b.hw}%${b.dr ? ' / ничья ' + b.dr + '%' : ''} / гости ${b.aw}%, в среднем ${b.avg}${b.sk === 'football' ? `, обе забили ${b.btts}%, больше 2.5 — ${b.o25}%` : ''}`;
+}
+const modelRowText = r => `${r.k}: кэф ${r.odd} | рынок без маржи ${pct(r.v.pm)} | по статистике ${pct(r.v.pmod)} | итог модели ${pct(r.v.p)}${r.v.push > 0.005 ? ` (+возврат ${pct(r.v.push)})` : ''} | выгода ${r.ev >= 0 ? '+' : ''}${Math.round(r.ev * 100)}%`;
+/* таблица для разбора матча: сначала лучшая (выгодная и надёжная) ставка КАЖДОГО типа рынка, потом остальные */
+function modelTableDiv(m, limit){
+  const M = modelFor(m); if (!M) return '';
+  const rows = Object.entries(M.probs).map(([k, v]) => ({ k, v, odd: Number(m.odds[k]), ev: evOf(v.p, v.push, Number(m.odds[k])) })).filter(r => r.odd >= 1.05);
+  rows.forEach(r => { r.sc = r.ev + 0.05 * r.v.p; });
+  rows.sort((a, b) => b.sc - a.sc);
+  const best = [], seen = new Set();
+  rows.forEach(r => { if (r.odd >= 1.1 && r.odd <= 8){ const d = divOf(r.k); if (!seen.has(d)){ seen.add(d); best.push(r); } } });
+  const rest = rows.filter(r => !best.includes(r)).slice(0, Math.max(0, (limit || 30) - best.length));
+  return 'ЛУЧШАЯ СТАВКА КАЖДОГО ТИПА РЫНКА (выгодно и надёжно; выбирай из РАЗНЫХ типов):\n' + best.map(modelRowText).join('\n') + (rest.length ? '\nОСТАЛЬНЫЕ РЫНКИ:\n' + rest.map(modelRowText).join('\n') : '');
+}
 function modelTable(m, limit){
   const M = modelFor(m); if (!M) return '';
   const rows = Object.entries(M.probs).map(([k, v]) => ({ k, v, odd: Number(m.odds[k]), ev: evOf(v.p, v.push, Number(m.odds[k])) }))
@@ -2706,9 +2762,9 @@ function buildAnalystPrompt(m, ctx, withDetail, want){
 ${m.info ? 'ЛАЙВ-ДАННЫЕ ФОНБЕТА (статистика матча): ' + JSON.stringify(m.info).slice(0, 900) + '\n' : ''}КОЭФФИЦИЕНТЫ (основные): ${JSON.stringify(m.odds)}
 ${subs ? 'ДОП. РЫНКИ:\n' + subs + '\n' : ''}
 ВЕРОЯТНОСТИ, ПОСЧИТАННЫЕ ПРОГРАММОЙ (рынок без маржи | по статистике | итог модели | выгода при этом кэфе):
-${M ? modelTable(m, 30) : 'модель для этого матча не построена'}
+${M ? modelTableDiv(m, 30) : 'модель для этого матча не построена'}
 ${M ? 'КАК ПОСЧИТАНО: ' + M.notes.join(' ') : ''}
-СТАТИСТИКА ИЗ АРХИВА ФОНБЕТА (по номерам команд, без путаницы с тёзками):
+${baseRatesText(m)}СТАТИСТИКА ИЗ АРХИВА ФОНБЕТА (по номерам команд, без путаницы с тёзками):
 ${statsText(m.team1, A, m.sportKey)}
 ${statsText(m.team2, B, m.sportKey)}
 ${ctx.F ? 'СТАТИСТИКА МАТЧ-ЦЕНТРА ФОНБЕТА (таблица, форма во всех турнирах, угловые и карточки, составы):\n' + ssisText(ctx.F, m).slice(0, 6000) + '\n' : ''}Очные встречи (архив Фонбета): ${hh.length ? hh.map(r => `${r.hn} ${r.x}:${r.y} ${r.an} (${new Date(r.t * 1000).toLocaleDateString('ru-RU')})`).join('; ') : 'нет за период архива'}
@@ -2722,7 +2778,7 @@ ${q ? 'ТОЧНОСТЬ ПРОШЛЫХ ПРОГНОЗОВ ПРОГРАММЫ (у
 1) Основа — «итог модели» (рынок + статистика). Рынок букмекера обычно точен: отклоняйся, только если есть конкретные факты, которых он мог не учесть (составы, травмы ключевых игроков, вратарь, мотивация, усталость, переезд, погода, судья), или сильный сигнал статистики.
 2) Для каждого важного фактора дай поправку в процентных пунктах к конкретному рынку (adjustments). Один факт учитывай один раз. Обычно поправки 1–6 п.п.; больше 10 п.п. — только при очень сильных фактах.
 3) Итоговая вероятность = итог модели + поправки. Выгода = вероятность × кэф − 1.
-${want && want.length < 3 ? `4) ПОЛЬЗОВАТЕЛЬ ВЫБРАЛ ЦВЕТА СТАВОК: ${want.map(k => ({ low: 'надёжные (итоговая вероятность от 70%)', medium: 'средний риск (вероятность 50–70%)', high: 'рискованные (вероятность ниже 50%, обычно высокий кэф)' }[k])).join('; ')}. Дай от 1 до 3 ставок ТОЛЬКО этих категорий (поле risk должно быть: ${want.join(' или ')}), лучшие по выгоде. Ставки других категорий не предлагай. Если подходящих нет — верни пустой bets и объясни в no_bet_reason.` : '4) Дай от 1 до 3 ставок. Сначала с выгодой от +3%. Если таких нет — одну самую надёжную, value:false, и честно объясни в reason.'}
+${want && want.length < 3 ? `4) ПОЛЬЗОВАТЕЛЬ ВЫБРАЛ ЦВЕТА СТАВОК: ${want.map(k => ({ low: 'надёжные (итоговая вероятность от 70%)', medium: 'средний риск (вероятность 50–70%)', high: 'рискованные (вероятность ниже 50%, обычно высокий кэф)' }[k])).join('; ')}. Дай от 1 до ${diverseOn() ? 5 : 3} ставок ТОЛЬКО этих категорий (поле risk должно быть: ${want.join(' или ')}), лучшие по выгоде${diverseOn() ? ', из РАЗНЫХ типов рынков (победа, двойной шанс, фора, тотал больше/меньше, инд. тотал, обе забьют), без однотипных повторов' : ''}. Ставки других категорий не предлагай. Если подходящих нет — верни пустой bets и объясни в no_bet_reason.` : (diverseOn() ? '4) Дай от 3 до 5 ставок из РАЗНЫХ типов рынков (победа, ничья, двойной шанс, фора, тотал больше, тотал меньше, индивидуальный тотал, обе забьют): по одной лучшей на каждый тип, где есть хорошая ставка. Не повторяй однотипные ставки и не ставь только на тоталы или только на победы: смотри, где выгоднее и безопаснее именно в этом матче (опирайся и на «КАК ОБЫЧНО ЗАКАНЧИВАЮТСЯ МАТЧИ»). Сначала с выгодой от +3%, затем самые надёжные; по каждой коротко: чем хороша и в чём риск. Если хороших нет — одну самую вероятную, value:false, и честно объясни в reason.' : '4) Дай от 1 до 3 ставок. Сначала с выгодой от +3%. Если таких нет — одну самую надёжную, value:false, и честно объясни в reason.')}
 5) Мало данных (низшие лиги, нет составов) — снижай уверенность и data_quality.
 6) Факты только из данных выше. Ничего не выдумывай.
 Ответь ТОЛЬКО JSON:
@@ -2771,14 +2827,28 @@ function finalizeBets(m, d, M, critic){
     b.adj = (d.adjustments || []).filter(a => sameKey(m, a.market, b.market)).slice(0, 6);
     b.fin = true; kept.push(b);
   });
-  kept.sort((x, y) => (y.ev === undefined ? -9 : y.ev) - (x.ev === undefined ? -9 : x.ev));
+  const byEv = (x, y) => (y.ev === undefined ? -9 : y.ev) - (x.ev === undefined ? -9 : x.ev);
+  kept.sort(byEv);
+  d.hidden = d.hidden || [];
+  if (diverseOn() && kept.length > 1){
+    const seen = new Set(), first = [], extra = [];
+    kept.forEach(b => { const rk = resolvePickL(m, b.market); b.div = divOf(rk.key || b.market); if (!seen.has(b.div)){ seen.add(b.div); first.push(b); } else extra.push(b); });
+    while (first.length < 3 && extra.length) first.push(extra.shift());
+    first.sort(byEv);
+    first.slice(5).concat(extra).forEach(b => { b.hiddenWhy = `Такой же тип ставки (${b.div}) уже есть выше: показываю разные типы. Можно подтвердить вручную.`; d.hidden.push(b); });
+    d.bets = first.slice(0, 5); d.dropped = dropped; return;
+  }
   d.bets = kept; d.dropped = dropped;
 }
 function mathBets(m, M, want){
   if (!M) throw new Error('⚠️ Для этого матча модель не строится: нет основных коэффициентов (исход, тотал или фора).');
   const rows = Object.entries(M.probs).map(([k, v]) => ({ k, v, odd: Number(m.odds[k]), ev: evOf(v.p, v.push, Number(m.odds[k])) })).filter(r => r.odd >= 1.15 && r.odd <= 6 && r.v.p >= 0.2);
   const okR = r => !want || want.includes(riskFrom(r.v.p));
-  const val = rows.filter(r => r.ev >= 0.02 && okR(r)).sort((a, b) => b.ev - a.ev).slice(0, 3);
+  const sc = r => r.ev + 0.05 * r.v.p;
+  const divide = list => { if (!diverseOn()) return list.slice(0, 3); const seen = new Set(), out = []; list.forEach(r => { const d = divOf(r.k); if (!seen.has(d)){ seen.add(d); out.push(r); } }); return out.slice(0, 5); };
+  const val = divide(rows.filter(r => r.ev >= 0.02 && okR(r)).sort((a, b) => sc(b) - sc(a)));
+  const nVal = val.length;
+  if (diverseOn() && val.length < 3){ const seen = new Set(val.map(r => divOf(r.k))); rows.filter(r => r.ev >= -0.05 && okR(r)).sort((a, b) => b.v.p - a.v.p).forEach(r => { const d = divOf(r.k); if (val.length < 3 && !seen.has(d)){ seen.add(d); val.push(r); } }); }
   const pick = val.length ? val : rows.filter(r => r.ev >= -0.08 && okR(r)).sort((a, b) => b.v.p - a.v.p).slice(0, 1);
   const before = m.start || Date.now() / 1000;
   const A = m.t1id ? teamStats(m.t1id, before, 10) : null, B = m.t2id ? teamStats(m.t2id, before, 10) : null;
@@ -2786,7 +2856,7 @@ function mathBets(m, M, want){
   [[m.team1, A], [m.team2, B]].forEach(([n, S]) => { if (S) facts.push(`${n}: В${S.w} Н${S.d} П${S.l} в ${S.n} последних, ${r1(S.gf / S.n)}–${r1(S.ga / S.n)} в среднем, отдых ${r1(S.restDays)} дн.`); });
   const mv = moveList(m); if (mv.length) facts.push(movementText(m));
   return {
-    summary: val.length ? `Модель нашла перевес над рынком в ${val.length} ${val.length === 1 ? 'ставке' : 'ставках'}. Расчёт без ИИ: только коэффициенты и статистика.` : 'Перевеса над рынком модель не нашла: коэффициенты справедливые. Показана самая вероятная ставка без ценности.',
+    summary: nVal ? `Модель нашла перевес над рынком в ${nVal} ${nVal === 1 ? 'ставке' : 'ставках'}. Расчёт без ИИ: только коэффициенты и статистика.` : 'Перевеса над рынком модель не нашла: коэффициенты справедливые. Показана самая вероятная ставка без ценности.',
     facts, data_quality: M.w > 0 ? 'medium' : 'low',
     bets: pick.map(r => ({ market: r.k, odds: r.odd, prob: Math.round(r.v.p * 1000) / 10, value: r.ev >= 0.02, risk: riskFrom(r.v.p),
       reason: `Рынок без маржи ${pct(r.v.pm)}, по статистике ${pct(r.v.pmod)}, модель ${pct(r.v.p)} → выгода ${r.ev >= 0 ? '+' : ''}${Math.round(r.ev * 100)}%.`,
@@ -2851,7 +2921,7 @@ async function analyzeSingleMatch(id, force){
       if (!data.data_quality && scout && scout.data) data.data_quality = scout.data.data_quality;
     }
     finalizeBets(m, data, M, critic);
-    data.hidden = [];
+    data.hidden = data.hidden || [];
     if (want.length < 3){   // ставки не выбранных цветов не пропадают: лежат в «скрыто по цветам», их можно подтвердить вручную
       const keep = [];
       data.bets.forEach(b => { if (want.includes(b.risk)) keep.push(b); else { b.hiddenWhy = `Цвет ставки ${RISK[b.risk] || b.risk} не входит в выбранные (${wantTxt(want)}).`; data.hidden.push(b); } });
@@ -3490,11 +3560,19 @@ async function ssisFor(m){
 const EXP_KEY_OK = k => /^(П1|X|П2|1X|X2|12|ОЗ да|ОЗ нет)$|^(Ф[12]|Т[БМ]|ИТ[12][БМ])\(/.test(k);
 /* варианты ставок на событие по модели, лучшие сверху */
 function expOptions(m){
-  const M = modelFor(m), rows = [];
+  const M = modelFor(m); let rows = [];
   if (M) Object.entries(M.probs).forEach(([k, v]) => { const odd = Number(m.odds[k]); if (!(odd >= 1.1 && odd <= 6)) return; rows.push({ k, p: v.p, pm: v.pm, pmod: v.pmod, push: v.push || 0, odd, ev: evOf(v.p, v.push || 0, odd) }); });
   else Object.keys(m.odds).filter(EXP_KEY_OK).forEach(k => { const odd = Number(m.odds[k]), pm = marketProb(m, k); if (!(odd >= 1.1 && odd <= 6) || !pm) return; rows.push({ k, p: pm, pm, pmod: null, push: 0, odd, ev: evOf(pm, 0, odd) }); });
   rows.forEach(r => { r.risk = riskFrom(r.p); r.score = r.ev + 0.05 * r.p; });
+  if (expTypes.size) rows = rows.filter(r => expTypes.has(divOf(r.k)));
   return rows.sort((a, b) => b.score - a.score);
+}
+/* по одной лучшей ставке каждого типа рынка (чтобы экспресс не был однотипным) */
+function diverseRows(rows, allowed, max){
+  const ok = rows.filter(r => allowed.includes(r.risk)), seen = new Set(), out = [];
+  ok.forEach(r => { const d = divOf(r.k); if (!seen.has(d)){ seen.add(d); out.push(r); } });
+  ok.forEach(r => { if (out.length < Math.min(max, 4) && !out.includes(r)) out.push(r); });
+  return out.slice(0, max);
 }
 function expBest(m, allowed, strict){
   const rows = expOptions(m), ok = rows.filter(r => allowed.includes(r.risk));
@@ -3504,8 +3582,9 @@ const expRow = r => `${r.k}: кэф ${r.odd} | рынок без маржи ${pc
 function expEventText(m, F, C, allowed, budget){
   const odds = Object.fromEntries(Object.entries(m.odds).filter(([k]) => EXP_KEY_OK(k) && (!m.prim || !m.prim.length || m.prim.includes(k) || /^(ОЗ |ИТ[12][БМ]\((0\.5|1\.5)\))/.test(k))).slice(0, 18));
   let t = `=== [id=${m.id}] ${m.sport}. ${m.league} | ${m.team1} — ${m.team2} | ${m.status === 'live' ? 'LIVE ' + fmtTimer(m, false) + ', счёт ' + m.score : 'начало ' + fmtStart(m)}\nКОЭФ: ${JSON.stringify(odds)}\n`;
-  const rows = expOptions(m), ok = rows.filter(r => allowed.includes(r.risk)).slice(0, 6), more = rows.filter(r => !ok.includes(r)).sort((a, b) => b.p - a.p).slice(0, 2);
-  t += rows.length ? 'ВЕРОЯТНОСТИ ПРОГРАММЫ (модель: рынок без маржи + статистика):\n' + ok.concat(more).map(expRow).join('\n') + '\n' : 'Модель не построена: опирайся на коэффициенты.\n';
+  const rows = expOptions(m), ok = diverseOn() ? diverseRows(rows, allowed, 7) : rows.filter(r => allowed.includes(r.risk)).slice(0, 6), more = rows.filter(r => !ok.includes(r)).sort((a, b) => b.p - a.p).slice(0, 2);
+  t += rows.length ? (diverseOn() ? 'ЛУЧШИЕ СТАВКИ РАЗНЫХ ТИПОВ (по каждому типу самая выгодная и надёжная; выбирай тот тип, где здесь выгоднее и безопаснее):\n' : 'ВЕРОЯТНОСТИ ПРОГРАММЫ (модель: рынок без маржи + статистика):\n') + ok.concat(more).map(expRow).join('\n') + '\n' : 'Модель не построена: опирайся на коэффициенты.\n';
+  const brs = baseRatesShort(m); if (brs) t += brs + '\n';
   let st = '';
   if (F){ const sT = F.SI ? standingsText(F.SI, [F.P1, F.P2].filter(Boolean).map(x => String(x.id))) : ''; st = (sT ? sT.split('\n').slice(1).join(' ') + '\n' : '') + statsText(m.team1, F.A, m.sportKey) + '\n' + statsText(m.team2, F.B, m.sportKey); }
   else { const before = m.start || Date.now() / 1000, A = m.t1id ? teamStats(m.t1id, before, 10) : null, B = m.t2id ? teamStats(m.t2id, before, 10) : null; if (A || B) st = statsText(m.team1, A, m.sportKey) + '\n' + statsText(m.team2, B, m.sportKey); }
@@ -3527,9 +3606,12 @@ function expEventText(m, F, C, allowed, budget){
 function buildExpressPrompt(evs, n, auto, allowed, pool, scouted){
   const RL = { low: 'low — надёжная (итоговая вероятность от 70%)', medium: 'medium — средний риск (50–70%)', high: 'high — рискованная (ниже 50%)' };
   const q = [...new Set(pool.map(m => m.sportKey))].slice(0, 3).map(qualityText).filter(Boolean).join('; ');
+  const cap = Math.max(2, Math.ceil(n * 0.4));
+  const divTxt = diverseOn() && expTypes.size !== 1 ? `РАЗНООБРАЗИЕ: не делай экспресс однотипным: не больше ${cap} ставок одного типа (победа, ничья, двойной шанс, фора, тотал больше, тотал меньше, инд. тотал, обе забьют). В каждом событии выбирай тот тип ставки, где здесь реально выгоднее и безопаснее (смотри «ЛУЧШИЕ СТАВКИ РАЗНЫХ ТИПОВ» и «ФОН» — как обычно заканчиваются матчи), а не одну и ту же везде.\n` : '';
+  const typeTxt = expTypes.size ? `РАЗРЕШЁННЫЕ ТИПЫ СТАВОК (только они, остальные не бери): ${[...expTypes].join(', ')}.\n` : '';
   return `Собери экспресс из ${n} событий. ${auto ? `Выбери из списка РОВНО ${n} событий и ещё до 3 запасных (reserve:true) на случай, если ставку снимут` : `Используй ВСЕ ${n} событий из списка`}; для каждого события ОДНА ставка.
 Разрешённые уровни риска: ${allowed.map(k => RL[k]).join('; ')}. ${auto ? 'Бери только ставки этих уровней.' : 'По возможности бери ставки этих уровней.'}
-КАК РАБОТАТЬ (так же, как при разборе одного матча):
+${divTxt}${typeTxt}КАК РАБОТАТЬ (так же, как при разборе одного матча):
 1) Основа — «итог модели» (рынок без маржи + статистика матч-центра и архива Фонбета). Рынок обычно точен: отклоняйся, только если есть конкретные факты (составы, травмы ключевых игроков, вратарь, мотивация, усталость, переезд, погода) или сильный сигнал статистики. Поправка обычно 1–6 п.п., больше 10 п.п. — только при очень сильных фактах.
 2) prob — твоя итоговая вероятность ставки в процентах (итог модели + поправки).
 3) В экспрессе маржа букмекера перемножается: выбирай исходы с высокой вероятностью и выгодой не хуже −3%, не бери зависимые события.
@@ -3548,6 +3630,37 @@ function buildExpressCriticPrompt(raw, ctxs){
 СТАВКИ ЭКСПРЕССА:
 ${rows}
 Ответь ТОЛЬКО JSON: {"legs":[{"id":число,"market":"как у аналитика","keep":true,"prob":число 1-99,"why":"коротко"}],"notes":"главные замечания одним-двумя предложениями"}`;
+}
+/* ставки не из выбранных типов заменяем лучшей ставкой выбранного типа на том же событии (или убираем) */
+function expEnforceTypes(legs, allowed, notes){
+  if (!expTypes.size) return;
+  for (let i = legs.length - 1; i >= 0; i--){
+    const l = legs[i]; if (expTypes.has(divOf(l.market))) continue;
+    const m = matchById[String(l.id)], alt = m ? expOptions(m).find(r => allowed.includes(r.risk)) : null;
+    const nl = alt ? expFinalLeg(m, { key: alt.k, prob: null, reason: `Заменена ставкой выбранного типа (было ${l.market}): итог модели ${pct(alt.p)}, выгода ${alt.ev >= 0 ? '+' : ''}${Math.round(alt.ev * 100)}%.` }, null) : null;
+    if (nl){ legs[i] = nl; notes.push(`${m.team1} — ${m.team2}: ${l.market} заменена на ${alt.k} (выбранный тип ставок).`); }
+    else { if (m) notes.push(`${m.team1} — ${m.team2}: ставки выбранного типа не нашлось, событие убрано.`); legs.splice(i, 1); }
+  }
+}
+/* не больше ~40% ставок одного типа: лишние заменяем лучшей ставкой другого типа на том же событии */
+function expDiversify(legs, n, allowed, notes){
+  if (!diverseOn() || expTypes.size === 1) return legs;
+  const cap = Math.max(2, Math.ceil(n * 0.4));
+  for (let guard = 0; guard < 20; guard++){
+    const c = {}; legs.forEach(l => { const d = divOf(l.market); c[d] = (c[d] || 0) + 1; });
+    const over = Object.keys(c).find(d => c[d] > cap); if (!over) break;
+    const cands = legs.filter(l => divOf(l.market) === over).sort((a, b) => ((a.ev || 0) + 0.05 * (a.p || 0)) - ((b.ev || 0) + 0.05 * (b.p || 0)));
+    let done = false;
+    for (const l of cands){
+      const m = matchById[String(l.id)]; if (!m) continue;
+      const alt = expOptions(m).find(r => allowed.includes(r.risk) && divOf(r.k) !== over && (c[divOf(r.k)] || 0) < cap);
+      const nl = alt ? expFinalLeg(m, { key: alt.k, prob: null, reason: `Заменена на другой тип ставки ради разнообразия (было ${l.market}): итог модели ${pct(alt.p)}, выгода ${alt.ev >= 0 ? '+' : ''}${Math.round(alt.ev * 100)}%.` }, null) : null;
+      if (!nl) continue;
+      legs[legs.indexOf(l)] = nl; notes.push(`${m.team1} — ${m.team2}: ${l.market} заменена на ${alt.k}, чтобы не было однотипных ставок.`); done = true; break;
+    }
+    if (!done) break;
+  }
+  return legs;
 }
 function expRawLegs(arr){
   const seen = new Set(), out = [];
@@ -3607,7 +3720,7 @@ async function buildExpress(){
   const stage = t => { if (expResult === job){ job.stage = t; renderExpressResult(); } };
   const notes = [], ctxs = {}, riskTxt = allowedRisk.map(k => RISK[k]).join(', ');
   const rank = xs => xs.map(m => { const b = expBest(m, allowedRisk, true); return { m, s: b ? b.score + ((modelFor(m) || {}).w > 0 ? 0.01 : 0) : null }; }).filter(x => x.s !== null).sort((a, b) => b.s - a.s).map(x => x.m);
-  const fewErr = () => new Error(`⚠️ Модель нашла меньше 2 событий со ставками разрешённого риска (${riskTxt}). Разрешите больше уровней риска или смените фильтр.`);
+  const fewErr = () => new Error(`⚠️ Модель нашла меньше 2 событий со ставками разрешённого риска (${riskTxt}). Разрешите больше уровней риска или смените фильтр.${expTypes.size ? ' Типы ставок: ' + [...expTypes].join(', ') + ' (можно снять выбор типов).' : ''}`);
   try {
     // 1) предварительный отбор моделью (без сети и без токенов)
     let pool = list;
@@ -3672,8 +3785,10 @@ async function buildExpress(){
       if (c && c.keep === false){ dropped.push({ title: `${m.team1} — ${m.team2}`, market: x.key, why: String(c.why || 'снята критиком') }); return; }
       const l = expFinalLeg(m, x, c); if (l) legs.push(l);
     });
+    expEnforceTypes(legs, allowedRisk, notes);
     let used = legs;
     if (auto){ used = legs.filter(l => allowedRisk.includes(l.risk)).sort((a, b) => (a.reserve - b.reserve) || (b.both - a.both)).slice(0, n); }
+    used = expDiversify(used, n, allowedRisk, notes);
     if (!used.length) throw new Error(legs.length ? '⚠️ После пересчёта вероятности все ставки оказались другого уровня риска. Разрешите больше уровней риска или повторите.' : (dropped.length ? '⚠️ Критик снял все ставки экспресса. Соберите заново или смените события.' : '⚠️ ИИ не вернул распознаваемых ставок. Попробуйте ещё раз.'));
     if (used.length < 2) throw new Error('⚠️ Осталась одна подходящая ставка, а для экспресса нужно минимум 2. Разрешите больше уровней риска или выберите другие события.');
     if (auto && used.length < n) notes.push(`Ставок разрешённого риска (${riskTxt}) нашлось ${used.length} из ${n}.`);
@@ -3715,6 +3830,10 @@ function initExpress(){
     const k = b.dataset.risk, next = Object.assign({}, expRisk, { [k]: !expRisk[k] });
     if (!Object.values(next).some(Boolean)) return;
     expRisk = next; b.classList.toggle('active', expRisk[k]);
+  }));
+  document.querySelectorAll('#expressPanel [data-etype]').forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.etype; if (expTypes.has(k)) expTypes.delete(k); else expTypes.add(k);
+    b.classList.toggle('active', expTypes.has(k));
   }));
   document.querySelectorAll('#expressPanel [data-qd]').forEach(b => b.addEventListener('click', () => {
     $('dateMode').value = b.dataset.qd; $('dateMode').dispatchEvent(new Event('change'));
@@ -4139,7 +4258,7 @@ function droppedHtml(m, d){
     const odd = rp.key && !rp.off ? Number(sb ? sb.odds[rp.key] : m.odds[rp.key]) : Number(b.odds), w = betWho(m, e);
     return `<div class="bet ${['low', 'medium', 'high'].includes(b.risk) ? b.risk : 'medium'}"><div class="bet-top"><b>${esc(betTitle(m, e))}</b>${w ? `<span class="bet-who">→ ${esc(w)}</span>` : ''}<span class="bet-odd">кэф ${esc(odd || '—')}</span>${b.fin ? `<span class="bet-risk">${RISK[b.risk] || ''}</span>` : ''}</div><div class="why">${kind === 'dropped' ? '🧐 Почему снята: ' + esc(b.vetoed || 'снята критиком') : '🎨 ' + esc(b.hiddenWhy || 'Не входит в выбранные цвета.')}</div>${b.reason ? `<div class="bet-why">${esc(b.reason)}</div>` : ''}${rp.off ? '<div class="hx-n">⚠️ Такой линии сейчас нет у Фонбета. Кэф взят от ИИ, реальный может отличаться. Результат программа проверит по счёту матча.</div>' : ''}${rp.key && odd > 1 ? `<div class="cf-row">${stakeCtl('f:' + m.id + '|' + kind + '|' + i, odd)}<button class="cf-btn" data-cact="force" data-mid="${esc(m.id)}" data-kind="${kind}" data-i="${i}">${kind === 'dropped' ? '⚠️ Всё равно подтвердить ставку' : '✅ Подтвердить ставку'}</button></div>` : '<div class="hx-n">Такого рынка нет в линии Фонбета, и программа не сможет проверить результат, поэтому подтвердить нельзя.</div>'}</div>`;
   }).join('')}</details>`;
-  return blk(d.dropped, 'dropped', '🧐 Критик снял ставки', !d.bets.length && !(d.hidden || []).length) + blk(d.hidden, 'hidden', '🎨 Другие цвета ставок: скрыты по вашему выбору', !d.bets.length);
+  return blk(d.dropped, 'dropped', '🧐 Критик снял ставки', !d.bets.length && !(d.hidden || []).length) + blk(d.hidden, 'hidden', '🎨 Скрытые ставки (другой цвет или повтор типа): можно подтвердить вручную', !d.bets.length);
 }
 /* перенос снятой критиком (или скрытой по цвету) ставки в обычные ставки разбора и подтверждение с суммой */
 function forceBet(mid, kind, i, stake){
