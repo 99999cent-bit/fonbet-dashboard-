@@ -1386,20 +1386,47 @@ function fmtUntil(ts){
   return `${same ? '' : d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) + ' '}${clock(ts).slice(0, 5)} (через ${h ? h + ' ч ' : ''}${mi} мин)`;
 }
 /* запрос с автоподбором ключа: начинаем с последнего рабочего, при лимите или неверном ключе берём следующий */
-async function provFetch(p, build){
+/* потоковый ответ: данные идут сразу, поэтому долгое «мышление» модели не рвёт соединение и не упирается в общий таймаут */
+async function readSse(r, touch){
+  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '', content = '', reasoning = '', finish = '', err = null;
+  for (;;){
+    const { done, value } = await rd.read(); if (done) break;
+    if (touch) touch();
+    buf += dec.decode(value, { stream: true });
+    let i; while ((i = buf.indexOf('\n')) >= 0){
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line.startsWith('data:')) continue;
+      const js = line.slice(5).trim(); if (!js || js === '[DONE]') continue;
+      let d; try { d = JSON.parse(js); } catch (e){ continue; }
+      if (d.error){ err = d.error; continue; }
+      const ch = (d.choices || [])[0]; if (!ch) continue;
+      if (ch.delta){ if (ch.delta.content) content += ch.delta.content; if (ch.delta.reasoning_content) reasoning += ch.delta.reasoning_content; }
+      if (ch.finish_reason) finish = ch.finish_reason;
+    }
+  }
+  if (err && !content) return { error: err };
+  return { choices: [{ finish_reason: finish || 'stop', message: { content, reasoning_content: reasoning } }] };
+}
+async function provFetch(p, build, opts = {}){
   const order = keyOrderOf(p);
   if (!order.length){ const e = new Error(`⚠️ Нет ключей ${aiName(p)}. Откройте ⚙️ Настройки и добавьте ключ.`); e.code = 'nokeys'; throw e; }
   const start = aiIdx[p] || 0; let lastMsg = '', lastKind = '';
   for (const i of order){
-    const { url, init } = build(aiKeys[p][i]);
+    const { url, init, stream } = build(aiKeys[p][i]);
     let r;
     try { r = await fetch(url, init); }
     catch (err){
       if (err.name === 'AbortError') throw err;
       const e = new Error(`❌ Нет связи с ${aiName(p)}: ${err.message}. Причины: нет интернета, нужен VPN, или сервис не разрешает запросы прямо со страницы (CORS).`); e.code = 'net'; throw e;
     }
-    let data = {}; const txt = await r.text();
-    try { data = txt ? JSON.parse(txt) : {}; } catch (e){ data = { _raw: txt.slice(0, 300) }; }
+    let data = {};
+    if (stream && r.ok && r.body){
+      try { data = await readSse(r, opts.touch); }
+      catch (err){ if (err.name === 'AbortError') throw err; const e = new Error(`❌ Соединение с ${aiName(p)} оборвалось во время ответа: ${err.message}.`); e.code = 'net'; throw e; }
+    } else {
+      const txt = await r.text();
+      try { data = txt ? JSON.parse(txt) : {}; } catch (e){ data = { _raw: txt.slice(0, 300) }; }
+    }
     const kind = classifyKeyErr(p, r.status, data);
     if (!kind){
       if (!aiInfo[p][i] || aiInfo[p][i].state !== 'ok') setKeyInfo(p, i, 'ok', '');
@@ -1480,18 +1507,20 @@ async function geminiCall(model, prompt, o, signal){
 async function oaiCall(p, model, prompt, o, signal){
   const msgs = []; if (o.system) msgs.push({ role: 'system', content: o.system });
   msgs.push({ role: 'user', content: prompt + (o.json ? '\n\nОтвет строго в формате JSON.' : '') });
-  let useFmt = !!o.json && !o.search;
+  let useFmt = !!o.json && !o.search, useStream = p === 'deepseek' && !o.search;
   let maxTok = o.maxTokens || 6000; if (p === 'deepseek') maxTok = Math.max(maxTok, 8000);   // рассуждающая модель тратит часть лимита на «мысли»
   for (let attempt = 0; attempt < 5; attempt++){
     const body = { model, messages: msgs, max_tokens: maxTok };
     if (o.temp !== undefined) body.temperature = o.temp;
     if (useFmt) body.response_format = { type: 'json_object' };
     if (o.search && p === 'qwen') body.enable_search = true;
-    const { data } = await provFetch(p, k => ({ url: provBase(p) + '/chat/completions',
-      init: { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + k }, body: JSON.stringify(body), signal } }));
+    if (useStream) body.stream = true;
+    const { data } = await provFetch(p, k => ({ url: provBase(p) + '/chat/completions', stream: useStream,
+      init: { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + k }, body: JSON.stringify(body), signal } }), { touch: o.touch });
     if (data.error || !Array.isArray(data.choices)){
       const m = errText(data) || data._raw || 'неизвестная ошибка';
       if (useFmt && /response_format|json/i.test(m)){ useFmt = false; continue; }
+      if (maxTok > 8192 && /max_tokens|maximum|valid range/i.test(m)){ maxTok = 8192; continue; }   // у модели меньший потолок ответа
       const e = new Error(`❌ Ошибка ${aiName(p)} (${model}): ${String(m).slice(0, 300)}`); if (/search/i.test(m)) e.code = 'tool'; throw e;
     }
     const ch = data.choices[0] || {}, msg = ch.message || {};
@@ -1530,15 +1559,18 @@ async function claudeCall(model, prompt, o, signal){
 }
 async function aiCall(p, model, prompt, o){
   const ms = o.timeout || (o.search ? 150000 : 100000);
-  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), ms);
+  const ctrl = new AbortController(); let timer = null;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => ctrl.abort(), ms); };   // таймаут по простою: сбрасывается, пока идут данные
+  const hard = setTimeout(() => ctrl.abort(), Math.max(ms, 600000));
+  arm(); const o2 = Object.assign({}, o, { touch: arm });
   try {
-    if (p === 'gemini') return await geminiCall(model, prompt, o, ctrl.signal);
-    if (p === 'claude') return await claudeCall(model, prompt, o, ctrl.signal);
-    return await oaiCall(p, model, prompt, o, ctrl.signal);
+    if (p === 'gemini') return await geminiCall(model, prompt, o2, ctrl.signal);
+    if (p === 'claude') return await claudeCall(model, prompt, o2, ctrl.signal);
+    return await oaiCall(p, model, prompt, o2, ctrl.signal);
   } catch (err){
-    if (err.name === 'AbortError') throw new Error(`⏳ ${aiName(p)} не ответил за ${Math.round(ms / 1000)} с. Попробуйте другую модель или VPN.`);
+    if (err.name === 'AbortError') throw new Error(`⏳ ${aiName(p)} не отвечал ${Math.round(ms / 1000)} с. Попробуйте ещё раз, другую модель или VPN.`);
     throw err;
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); clearTimeout(hard); }
 }
 const modelOf = p => p === aiCfg.prov ? ($('modelSelect').value || aiCfg.model[p] || '') : (aiCfg.model[p] || (DEF_MODELS[p] || [])[0] || '');
 /* у провайдера есть ключ, не отмеченный как «недействителен» или «лимит исчерпан» (по результатам последних запросов и проверки) */
@@ -1572,6 +1604,7 @@ async function aiRequest(prompt, o = {}){
         lastErr = e;
         const busy = /overload|unavailable|\b503\b|\b529\b|temporarily|high demand|try again later|перегруж/i.test(e.message);
         if (busy && attempt === 0){ toast(`⏳ ${aiName(p)} перегружен, повторяю через 3 с...`); await new Promise(r => setTimeout(r, 3000)); continue; }
+        if (attempt === 0 && (e.code === 'net' || /не отвечал \d+ с/.test(e.message))){ toast(`🔄 ${aiName(p)}: обрыв связи, повторяю...`); await new Promise(r => setTimeout(r, 2000)); continue; }
         if (!busy && !['keys', 'nokeys', 'net'].includes(e.code)) throw e;
         moveOn = true;
       }
